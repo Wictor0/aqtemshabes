@@ -1,50 +1,31 @@
-<<<<<<< HEAD
-import React from "react";
-=======
-import React, { useEffect } from "react"; // 1. Importe o useEffect
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
+import React, { useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Toast from "react-native-toast-message";
-<<<<<<< HEAD
-import { SafeAreaProvider } from 'react-native-safe-area-context'; // 1. IMPORTE AQUI
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as NavigationBar from "expo-navigation-bar";
 
 import { Providers } from "./components/Providers";
 import { useAuth } from "./context/AuthContext";
-import Header from "./components/layout/Header"; 
+import Header from "./components/layout/Header";
+import TabNavigator from "./navigation/TabNavigator";
+import LoadingSpinner from "./components/ui/LoadingSpinner";
 
-// Telas
+// Telas de ambas as versões
 import WelcomeScreen from "./components/screens/WelcomeScreen";
 import SignUpScreen from "./components/screens/SignUpScreen";
 import MatchDetailScreen from "./components/screens/MatchDetailScreen";
 import EventDetailScreen from "./components/screens/EventDetailScreen";
 import NotificationsScreen from "./components/screens/NotificationsScreen";
-import AgendaScreen from "./components/screens/AgendaScreen"; 
-import TabNavigator from "./navigation/TabNavigator";
-=======
-import * as NavigationBar from "expo-navigation-bar"; // 2. Importe a biblioteca de navegação
-
-import { Providers } from "./components/Providers";
-import { useAuth } from "./context/AuthContext";
-// Os caminhos agora apontam para dentro da pasta 'components'
-import WelcomeScreen from "./components/screens/WelcomeScreen";
-import SignUpScreen from "./components/screens/SignUpScreen";
-import HomeScreen from "./components/screens/HomeScreen";
-import ProfileScreen from "./components/screens/ProfileScreen";
-import MatchesScreen from "./components/screens/MatchesScreen";
-import MatchDetailScreen from "./components/screens/MatchDetailScreen";
+import AgendaScreen from "./components/screens/AgendaScreen";
 import FeedbackScreen from "./components/screens/FeedbackScreen";
 import DiscoverEventsScreen from "./components/screens/DiscoverEventsScreen";
 import CreateEventScreen from "./components/screens/CreateEventScreen";
-import EventDetailScreen from "./components/screens/EventDetailScreen";
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
-import LoadingSpinner from "./components/ui/LoadingSpinner";
 
 const Stack = createNativeStackNavigator();
 
-<<<<<<< HEAD
-// Pilha de navegação para utilizadores deslogados
+// Pilha de navegação para usuários deslogados
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -54,21 +35,22 @@ function AuthStack() {
   );
 }
 
-// Pilha de navegação para utilizadores logados
-// Dentro do ficheiro App.js
-
+// Pilha de navegação para usuários logados
 function AppStack() {
   return (
-    <Stack.Navigator 
+    <Stack.Navigator
       screenOptions={{
         header: (props) => <Header {...props} />,
       }}
     >
       <Stack.Screen name="Main" component={TabNavigator} />
-      <Stack.Screen name="Agenda" component={AgendaScreen} options={{ headerShown: false }} /> 
-      <Stack.Screen name="MatchDetail" component={MatchDetailScreen} options={{ headerShown: false }}/>
+      <Stack.Screen name="Agenda" component={AgendaScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="MatchDetail" component={MatchDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="EventDetail" component={EventDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Feedback" component={FeedbackScreen} />
+      <Stack.Screen name="DiscoverEvents" component={DiscoverEventsScreen} />
+      <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
     </Stack.Navigator>
   );
 }
@@ -77,18 +59,12 @@ function AppStack() {
 function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
 
-=======
-function AppNavigator() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  // 3. Adicione este useEffect para controlar a barra de navegação
   useEffect(() => {
-    // Esconde a barra de navegação e define o comportamento para 'sticky-immersive'
+    // Esconde a barra de navegação do Android para uma experiência mais imersiva
     NavigationBar.setVisibilityAsync("hidden");
     NavigationBar.setBehaviorAsync("inset-swipe");
   }, []);
 
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -97,14 +73,12 @@ function AppNavigator() {
     );
   }
 
-<<<<<<< HEAD
   return isAuthenticated ? <AppStack /> : <AuthStack />;
 }
 
 // Componente principal da Aplicação
 export default function App() {
   return (
-    // 2. ENVOLVA TUDO COM O SafeAreaProvider
     <SafeAreaProvider>
       <Providers>
         <NavigationContainer>
@@ -113,42 +87,6 @@ export default function App() {
         </NavigationContainer>
       </Providers>
     </SafeAreaProvider>
-=======
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <>
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="Matches" component={MatchesScreen} />
-          <Stack.Screen name="MatchDetail" component={MatchDetailScreen} />
-          <Stack.Screen name="Feedback" component={FeedbackScreen} />
-          <Stack.Screen
-            name="DiscoverEvents"
-            component={DiscoverEventsScreen}
-          />
-          <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
-          <Stack.Screen name="EventDetail" component={EventDetailScreen} />
-        </>
-      ) : (
-        <>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
-        </>
-      )}
-    </Stack.Navigator>
-  );
-}
-
-export default function App() {
-  return (
-    <Providers>
-      <NavigationContainer>
-        <AppNavigator />
-        <Toast />
-      </NavigationContainer>
-    </Providers>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   );
 }
 
@@ -157,12 +95,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-<<<<<<< HEAD
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F3F4F6", // Usando o cinza claro da segunda versão
   },
 });
-=======
-    backgroundColor: "#F3F4F6",
-  },
-});
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab

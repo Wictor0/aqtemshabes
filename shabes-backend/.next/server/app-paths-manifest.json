@@ -1,7 +1,1 @@
-{
-<<<<<<< HEAD
-  "/api/profile/route": "app/api/profile/route.js"
-=======
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js"
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
-}
+{}
