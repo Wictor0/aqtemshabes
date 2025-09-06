@@ -9,9 +9,9 @@ import {
 } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
-import Icon from "../ui/Icon"; // 1. Importe o componente de Ícone real
+import Icon from "../ui/Icon";
 
-// Funções de formatação (copiadas/adaptadas do seu backend)
+// Helper function for formatting time
 const formatTime = (timeStr) => (timeStr ? timeStr.substring(0, 5) : "");
 
 export default function EventCard({
@@ -42,7 +42,6 @@ export default function EventCard({
           </View>
           {matchScore && (
             <View style={styles.matchScoreBadge}>
-              {/* 2. Substitua os placeholders por ícones reais */}
               <Icon name="star" color="#D97706" size={12} />
               <Text style={styles.matchScoreText}>
                 {Math.round(matchScore * 100)}%
@@ -93,10 +92,7 @@ export default function EventCard({
         )}
 
         <View style={styles.tagsContainer}>
-<<<<<<< HEAD
-=======
           <Badge variant="warning">{event.dietary}</Badge>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
           <Badge variant="outline">{event.ageGroup}</Badge>
           <Badge variant="outline">{event.language}</Badge>
         </View>

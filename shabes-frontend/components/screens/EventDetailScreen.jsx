@@ -6,8 +6,7 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
-  Alert,
-  Platform, // 1. Importe a API Platform
+  Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -132,10 +131,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 </View>
               </View>
               <View style={styles.tagsContainer}>
-<<<<<<< HEAD
-=======
                 <Badge variant="outline">{event.dietary}</Badge>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
                 <Badge variant="outline">{event.ageGroup}</Badge>
                 <Badge variant="outline">{event.language}</Badge>
               </View>
@@ -209,7 +205,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
-    // 2. Utilize o Platform.select para definir o padding
     ...Platform.select({
       ios: {
         paddingTop: 12,

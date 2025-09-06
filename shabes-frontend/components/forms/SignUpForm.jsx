@@ -1,16 +1,5 @@
 import React, { useState } from "react";
-<<<<<<< HEAD
 import { View, StyleSheet, ScrollView, TouchableOpacity, Text } from "react-native";
-import { Button } from "../ui/Button";
-import { Input } from "../ui/Input";
-import { Label } from "../ui/Label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/Card";
-import LoadingSpinner from "../ui/LoadingSpinner";
-import Icon from "../ui/Icon";
-
-export default function SignUpForm({ onSubmit, isLoading, onBack }) {
-=======
-import { View, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Label } from "../ui/Label";
@@ -25,11 +14,9 @@ import { Select } from "../ui/Select";
 import { Textarea } from "../ui/Textarea";
 import { toast } from "../../hooks/use-toast";
 import LoadingSpinner from "../ui/LoadingSpinner";
-import Icon from "../ui/Icon"; // 1. Importe o componente de Ícone real
+import Icon from "../ui/Icon";
 
-// 2. O ícone de placeholder foi removido
-
-// Opções para os componentes Select
+// Options for Select components
 const distanceOptions = [
   { label: "5 km", value: "5" },
   { label: "10 km", value: "10" },
@@ -44,8 +31,6 @@ const timeOptions = [
   { label: "19:30", value: "19:30" },
   { label: "20:00", value: "20:00" },
   { label: "21:00", value: "21:00" },
-  { label: "22:00", value: "22:00" },
-  { label: "23:00", value: "23:00" },
 ];
 const dietaryOptions = [
   { label: "Kosher", value: "kosher" },
@@ -54,49 +39,26 @@ const dietaryOptions = [
   { label: "Qualquer", value: "any" },
 ];
 
-export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
+export default function SignUpForm({ onSubmit, isLoading, onBack }) {
   const [step, setStep] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     password: "",
     confirmPassword: "",
-<<<<<<< HEAD
-    address: "",
-=======
     maxDistance: "15",
     address: "",
     preferredStartTime: "19:00",
     preferredEndTime: "22:00",
     dietary: "kosher",
     notes: "",
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   });
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-<<<<<<< HEAD
-  const handleSubmit = () => {
-    if (formData.password !== formData.confirmPassword) {
-      alert("As senhas não conferem!"); // Pode usar seu toast aqui
-      return;
-    }
-    // Chama a função que veio da SignUpScreen
-    onSubmit({
-      email: formData.email,
-      password: formData.password,
-      metadata: {
-        full_name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-      }
-    });
-=======
   const handleStep1Submit = () => {
     const { name, email, password, confirmPassword } = formData;
     if (!name.trim())
@@ -113,37 +75,32 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
     setStep(2);
   };
 
-  const handleFinalSubmit = async () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        type: "success",
-        title: "Conta criada com sucesso!",
-        description: "Você será redirecionado para o login.",
-      });
-      onSignUpComplete();
-    }, 2000);
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
+  const handleFinalSubmit = () => {
+    // Calls the real submit function from SignUpScreen
+    onSubmit({
+      email: formData.email,
+      password: formData.password,
+      metadata: {
+        full_name: formData.name,
+        phone: formData.phone,
+        address: formData.address,
+        max_distance: formData.maxDistance,
+        preferred_start_time: formData.preferredStartTime,
+        preferred_end_time: formData.preferredEndTime,
+        dietary_preference: formData.dietary,
+        notes: formData.notes,
+      },
+    });
   };
 
   return (
     <Card style={{ width: "100%" }}>
       <CardHeader>
         <View style={styles.headerContainer}>
-<<<<<<< HEAD
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Icon name="chevron-left" size={28} />
-          </TouchableOpacity>
-          <View>
-            <CardTitle>Criar Conta</CardTitle>
-            <CardDescription>Preencha seus dados para finalizar</CardDescription>
-=======
           <TouchableOpacity
             onPress={step === 1 ? onBack : () => setStep(1)}
             style={styles.backButton}
           >
-            {/* 3. Ícone de "voltar" atualizado */}
             <Icon name="chevron-left" size={28} />
           </TouchableOpacity>
           <View>
@@ -153,36 +110,10 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
                 ? "Preencha seus dados pessoais"
                 : "Configure suas preferências"}
             </CardDescription>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
           </View>
         </View>
       </CardHeader>
       <CardContent>
-<<<<<<< HEAD
-        <View style={styles.formSection}>
-          <Label>Nome Completo</Label>
-          <Input value={formData.name} onChangeText={(v) => handleInputChange("name", v)} />
-        </View>
-        <View style={styles.formSection}>
-          <Label>Email</Label>
-          <Input value={formData.email} onChangeText={(v) => handleInputChange("email", v)} keyboardType="email-address" autoCapitalize="none" />
-        </View>
-        <View style={styles.formSection}>
-          <Label>Telefone</Label>
-          <Input value={formData.phone} onChangeText={(v) => handleInputChange("phone", v)} keyboardType="phone-pad" />
-        </View>
-        <View style={styles.formSection}>
-          <Label>Senha</Label>
-          <Input value={formData.password} onChangeText={(v) => handleInputChange("password", v)} secureTextEntry />
-        </View>
-        <View style={styles.formSection}>
-          <Label>Confirmar Senha</Label>
-          <Input value={formData.confirmPassword} onChangeText={(v) => handleInputChange("confirmPassword", v)} secureTextEntry />
-        </View>
-        <Button onPress={handleSubmit} disabled={isLoading} style={{ marginTop: 16 }}>
-          {isLoading ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Criar Conta"}
-        </Button>
-=======
         {step === 1 ? (
           <View style={styles.formContainer}>
             <View style={styles.formSection}>
@@ -214,7 +145,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.password}
                 onChangeText={(v) => handleInputChange("password", v)}
-                type="password"
+                secureTextEntry
               />
             </View>
             <View style={styles.formSection}>
@@ -222,7 +153,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.confirmPassword}
                 onChangeText={(v) => handleInputChange("confirmPassword", v)}
-                type="password"
+                secureTextEntry
               />
             </View>
             <Button onPress={handleStep1Submit} style={{ marginTop: 16 }}>
@@ -284,7 +215,6 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
             </Button>
           </ScrollView>
         )}
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
       </CardContent>
     </Card>
   );
@@ -293,11 +223,6 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
 const styles = StyleSheet.create({
   headerContainer: { flexDirection: "row", alignItems: "center", gap: 12 },
   backButton: { padding: 8 },
-<<<<<<< HEAD
-  formSection: { gap: 6, marginBottom: 12 },
-});
-=======
   formContainer: { gap: 12 },
   formSection: { gap: 6, marginBottom: 8 },
 });
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
