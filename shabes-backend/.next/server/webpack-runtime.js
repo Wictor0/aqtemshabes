@@ -22,8 +22,13 @@
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
+<<<<<<< HEAD
 /******/ 			// no module.id needed
 /******/ 			// no module.loaded needed
+=======
+/******/ 			id: moduleId,
+/******/ 			loaded: false,
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 /******/ 			exports: {}
 /******/ 		};
 /******/ 	
@@ -36,6 +41,12 @@
 /******/ 			if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 		}
 /******/ 	
+<<<<<<< HEAD
+=======
+/******/ 		// Flag the module as loaded
+/******/ 		module.loaded = true;
+/******/ 	
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 /******/ 		// Return the exports of the module
 /******/ 		return module.exports;
 /******/ 	}
@@ -44,11 +55,14 @@
 /******/ 	__webpack_require__.m = __webpack_modules__;
 /******/ 	
 /************************************************************************/
+<<<<<<< HEAD
 /******/ 	/* webpack/runtime/amd options */
 /******/ 	(() => {
 /******/ 		__webpack_require__.amdO = {};
 /******/ 	})();
 /******/ 	
+=======
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 /******/ 	/* webpack/runtime/compat get default export */
 /******/ 	(() => {
 /******/ 		// getDefaultExport function for compatibility with non-harmony modules
@@ -61,6 +75,7 @@
 /******/ 		};
 /******/ 	})();
 /******/ 	
+<<<<<<< HEAD
 /******/ 	/* webpack/runtime/create fake namespace object */
 /******/ 	(() => {
 /******/ 		var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
@@ -91,6 +106,8 @@
 /******/ 		};
 /******/ 	})();
 /******/ 	
+=======
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 /******/ 	/* webpack/runtime/define property getters */
 /******/ 	(() => {
 /******/ 		// define getter functions for harmony exports
@@ -141,6 +158,18 @@
 /******/ 		};
 /******/ 	})();
 /******/ 	
+<<<<<<< HEAD
+=======
+/******/ 	/* webpack/runtime/node module decorator */
+/******/ 	(() => {
+/******/ 		__webpack_require__.nmd = (module) => {
+/******/ 			module.paths = [];
+/******/ 			if (!module.children) module.children = [];
+/******/ 			return module;
+/******/ 		};
+/******/ 	})();
+/******/ 	
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 /******/ 	/* webpack/runtime/startup entrypoint */
 /******/ 	(() => {
 /******/ 		__webpack_require__.X = (result, chunkIds, fn) => {

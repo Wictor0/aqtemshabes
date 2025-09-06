@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import React, { useState, useRef, useEffect } from "react";
+=======
+import React, { useState } from "react";
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 import {
   View,
   Text,
@@ -7,12 +11,17 @@ import {
   FlatList,
   StyleSheet,
   SafeAreaView,
+<<<<<<< HEAD
   Animated,
   Easing,
   TouchableWithoutFeedback,
 } from "react-native";
 
 // Ícone simples ▼
+=======
+} from "react-native";
+// Usaremos um ícone de um pacote nativo ou criaremos um SVG simples
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 const ChevronDownIcon = () => (
   <View
     style={{
@@ -36,10 +45,18 @@ const ChevronDownIcon = () => (
 );
 
 /*
+<<<<<<< HEAD
   Implementação:
   - Backdrop com fade (Animated.opacity)
   - Sheet com slide de baixo pra cima (Animated.translateY)
   - Toque no fundo escuro fecha o modal
+=======
+  TRADUÇÃO DE CONCEITOS:
+  - `@radix-ui/react-select`: Totalmente substituído por uma implementação customizada usando `<Modal>` e `<FlatList>`.
+  - `SelectTrigger`: É um `<TouchableOpacity>` que mostra o valor selecionado e abre o modal.
+  - `SelectContent`: É o `<Modal>` que contém a lista de opções.
+  - `SelectItem`: É um `<TouchableOpacity>` dentro da `FlatList` no modal.
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 */
 
 export function Select({
@@ -48,6 +65,7 @@ export function Select({
   onValueChange,
   placeholder = "Selecione uma opção...",
 }) {
+<<<<<<< HEAD
   // Mantém o Modal montado durante a animação de saída
   const [portalVisible, setPortalVisible] = useState(false);
 
@@ -94,6 +112,9 @@ export function Select({
       if (finished) setPortalVisible(false);
     });
   };
+=======
+  const [modalVisible, setModalVisible] = useState(false);
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
 
   const selectedLabel = options.find(
     (option) => option.value === selectedValue
@@ -104,7 +125,11 @@ export function Select({
       style={styles.item}
       onPress={() => {
         onValueChange(item.value);
+<<<<<<< HEAD
         close();
+=======
+        setModalVisible(false);
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
       }}
     >
       <Text style={styles.itemText}>{item.label}</Text>
@@ -114,12 +139,21 @@ export function Select({
 
   return (
     <View>
+<<<<<<< HEAD
       {/* Botão que abre o modal */}
       <TouchableOpacity style={styles.trigger} onPress={open}>
+=======
+      {/* O Botão que abre o modal */}
+      <TouchableOpacity
+        style={styles.trigger}
+        onPress={() => setModalVisible(true)}
+      >
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
         <Text style={styles.triggerText}>{selectedLabel || placeholder}</Text>
         <ChevronDownIcon />
       </TouchableOpacity>
 
+<<<<<<< HEAD
       {/* Modal sem animação nativa: controlamos com Animated */}
       <Modal
         animationType="none"
@@ -157,6 +191,32 @@ export function Select({
               <Text style={styles.closeButtonText}>Fechar</Text>
             </TouchableOpacity>
           </Animated.View>
+=======
+      {/* O Modal com a lista de opções */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => {
+          setModalVisible(!modalVisible);
+        }}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Selecione uma opção</Text>
+            <FlatList
+              data={options}
+              renderItem={renderItem}
+              keyExtractor={(item) => item.value.toString()}
+            />
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
         </SafeAreaView>
       </Modal>
     </View>
@@ -180,6 +240,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#1F2937",
   },
+<<<<<<< HEAD
 
   // Backdrop separado do conteúdo (não "anda" com o slide)
   backdrop: {
@@ -194,13 +255,23 @@ const styles = StyleSheet.create({
   },
 
   // O que desliza é só o conteúdo
+=======
+  modalContainer: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   modalContent: {
     backgroundColor: "#F3F4F6",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
+<<<<<<< HEAD
     paddingBottom: 60,
     marginBottom: -40,
+=======
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
     maxHeight: "70%",
   },
   modalTitle: {

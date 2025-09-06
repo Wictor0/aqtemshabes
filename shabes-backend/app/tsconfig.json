@@ -28,6 +28,10 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".build/types/**/*.ts"
+<<<<<<< HEAD
 , "api/profile/route.js"  ],
+=======
+  ],
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   "exclude": ["node_modules"]
 }

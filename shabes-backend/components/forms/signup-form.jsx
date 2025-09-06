@@ -25,6 +25,10 @@ export default function SignUpForm({ inviteCode, onBack }) {
     address: '',
     preferredStartTime: '19:00',
     preferredEndTime: '22:00',
+<<<<<<< HEAD
+=======
+    dietary: 'kosher',
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
     notes: ''
   });
 
@@ -262,6 +266,30 @@ export default function SignUpForm({ inviteCode, onBack }) {
                 </div>
                 
                 <div>
+<<<<<<< HEAD
+=======
+                  <Label htmlFor="dietary" className="flex items-center space-x-2">
+                    <Utensils className="h-4 w-4" />
+                    <span>Preferência Alimentar</span>
+                  </Label>
+                  <Select 
+                    value={formData.dietary} 
+                    onValueChange={(value) => handleInputChange('dietary', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kosher">Kosher</SelectItem>
+                      <SelectItem value="traditional">Tradicional</SelectItem>
+                      <SelectItem value="vegetarian">Vegetariano</SelectItem>
+                      <SelectItem value="any">Qualquer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
                   <Label htmlFor="notes">Observações (Opcional)</Label>
                   <Textarea
                     id="notes"

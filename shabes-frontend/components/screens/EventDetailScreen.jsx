@@ -132,6 +132,10 @@ export default function EventDetailScreen({ route, navigation }) {
                 </View>
               </View>
               <View style={styles.tagsContainer}>
+<<<<<<< HEAD
+=======
+                <Badge variant="outline">{event.dietary}</Badge>
+>>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
                 <Badge variant="outline">{event.ageGroup}</Badge>
                 <Badge variant="outline">{event.language}</Badge>
               </View>
