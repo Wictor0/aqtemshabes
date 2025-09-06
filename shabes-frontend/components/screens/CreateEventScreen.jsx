@@ -127,16 +127,6 @@ export default function CreateEventScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-            <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.goBack()}
-            >
-            <Icon name="chevron-left" size={28} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Criar Evento</Text>
-            <View style={{ width: 40 }} />
-        </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -177,7 +167,7 @@ export default function CreateEventScreen({ navigation }) {
                     {Platform.OS === 'ios' && (
                         <View style={styles.iosPickerContainer}>
                             <Icon name="calendar" size={24} color="#374151" />
-                            <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDatechange} />
+                            <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} />
                         </View>
                     )}
                   </View>
@@ -246,22 +236,6 @@ export default function CreateEventScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "white",
-    ...Platform.select({
-      ios: { paddingTop: 12, paddingBottom: 12 },
-      android: { paddingTop: 40, paddingBottom: 15 },
-      default: { paddingVertical: 12 },
-    }),
-  },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
-  iconButton: { padding: 8 },
   container: { padding: 16, alignItems: "center", flexGrow: 1 },
   contentWrapper: { width: "100%", maxWidth: 700 },
   formSection: { gap: 8, marginBottom: 16 },

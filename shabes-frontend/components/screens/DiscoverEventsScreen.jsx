@@ -138,16 +138,6 @@ export default function DiscoverEventsScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-            <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => navigation.goBack()}
-            >
-            <Icon name="chevron-left" size={28} />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Descobrir Eventos</Text>
-            <View style={{ width: 40 }} />
-        </View>
         <ScrollView contentContainerStyle={styles.container}>
             <Card style={styles.filterCard}>
             <CardContent>
@@ -253,23 +243,6 @@ export default function DiscoverEventsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "white",
-    width: "100%",
-    ...Platform.select({
-      ios: { paddingTop: 12, paddingBottom: 12 },
-      android: { paddingTop: 40, paddingBottom: 15 },
-      default: { paddingVertical: 12 },
-    }),
-  },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
-  iconButton: { padding: 8 },
   container: { padding: 16, flexGrow: 1 },
   filterCard: { width: "100%", marginBottom: 24 },
   formSection: { gap: 8, marginBottom: 20 },

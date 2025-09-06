@@ -105,20 +105,6 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Icon name="chevron-left" size={28} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Meu Perfil</Text>
-        <TouchableOpacity style={styles.iconButton} onPress={signOut}>
-          <Icon name="logout" color="#EF4444" size={22} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
@@ -170,78 +156,6 @@ export default function ProfileScreen({ navigation }) {
               </View>
             </CardContent>
           </Card>
-
-          {/* Preferences Card */}
-          <Card style={{ width: "100%" }}>
-            <CardHeader>
-              <View style={styles.cardTitleContainer}>
-                <Icon name="map-marker-outline" size={22} color="#10B981" />
-                <CardTitle>Preferências de Matchmaking</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent>
-              <View style={styles.formSection}>
-                <Label>Endereço/Região</Label>
-                <Input
-                  value={profileData.address}
-                  onChangeText={(v) => handleInputChange("address", v)}
-                  placeholder="Bairro, cidade - estado"
-                  editable={isEditing}
-                />
-              </View>
-              <View style={styles.formSection}>
-                <Label>Distância Máxima: {profileData.max_distance}km</Label>
-                <Slider
-                  style={{ width: "100%", height: 40 }}
-                  minimumValue={1}
-                  maximumValue={50}
-                  step={1}
-                  value={profileData.max_distance}
-                  onValueChange={(v) => handleInputChange("max_distance", v)}
-                  minimumTrackTintColor="#4F46E5"
-                  maximumTrackTintColor="#D1D5DB"
-                  disabled={!isEditing}
-                />
-              </View>
-              <View style={styles.formSection}>
-                <Label>Preferência Alimentar</Label>
-                <Select
-                  options={dietaryOptions}
-                  selectedValue={profileData.dietary_preference}
-                  onValueChange={(v) => handleInputChange("dietary_preference", v)}
-                  // disabled={!isEditing} // Adicionar a prop 'disabled' ao componente Select se necessário
-                />
-              </View>
-              <View style={styles.formSection}>
-                <Label>Observações</Label>
-                <Textarea
-                  value={profileData.notes}
-                  onChangeText={(v) => handleInputChange("notes", v)}
-                  placeholder="Conte um pouco sobre você..."
-                  editable={isEditing}
-                />
-              </View>
-            </CardContent>
-          </Card>
-
-          {/* Invite Codes Card */}
-          <Card style={{ width: "100%" }}>
-            <CardHeader>
-              <View style={styles.cardTitleContainer}>
-                <Icon name="share-variant-outline" size={22} color="#7C3AED" />
-                <CardTitle>Convites da Comunidade</CardTitle>
-              </View>
-            </CardHeader>
-            <CardContent>
-              <Button
-                variant="host"
-                style={{ width: "100%" }}
-                onPress={() => handleCopyInvite("SHALOM2025")}
-              >
-                Gerar e Copiar Código
-              </Button>
-            </CardContent>
-          </Card>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -256,26 +170,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#F9FAFB",
   },
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "white",
-    ...Platform.select({
-      ios: { paddingTop: 12, paddingBottom: 12 },
-      android: { paddingTop: 40, paddingBottom: 15 },
-      default: { paddingVertical: 12 },
-    }),
-  },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
-  iconButton: { padding: 8 },
   container: {
     flexGrow: 1,
     padding: 16,
     alignItems: "center",
+    justifyContent: "center", // Centraliza o conteúdo verticalmente
   },
   contentWrapper: {
     width: "100%",
@@ -294,3 +193,4 @@ const styles = StyleSheet.create({
   },
   formSection: { gap: 8, marginBottom: 16 },
 });
+

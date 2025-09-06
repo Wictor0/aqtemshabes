@@ -15,30 +15,10 @@ import { useAuth } from "../../context/AuthContext";
 import { getMyProfile } from "../../services/api";
 import { Card, CardContent } from "../ui/Card";
 import MatchCard from "../cards/MatchCard";
-import EventCard from "../cards/EventCard"; // Importado da outra versão
 import Icon from "../ui/Icon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import { mockEventMatches } from "../../lib/mock-data";
-
-// Mock data combinado das duas versões
-const mockEvents = [
-  {
-    id: "event-1",
-    title: "Shabat Familiar em Jardins",
-    host: { name: "David Levy" },
-    date: "2025-08-01T19:00:00Z",
-    startTime: "19:00:00",
-    endTime: "22:30:00",
-    approximateAddress: "Jardins, São Paulo",
-    currentGuests: 2,
-    maxGuests: 6,
-    dietary: "Kosher",
-    ageGroup: "Famílias",
-    language: "Português",
-    description: "Um shabat caloroso com tradições ...",
-  },
-];
 
 // Funções de formatação de data
 const formatShabbatDate = (date) =>
@@ -121,21 +101,6 @@ export default function HomeScreen({ navigation }) {
               />
             </LinearGradient>
           </TouchableOpacity>
-
-          {/* Seção "Recomendados" (da outra versão) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recomendados para Você</Text>
-            {mockEvents.map((event) => (
-              <TouchableOpacity
-                key={event.id}
-                onPress={() =>
-                  navigation.navigate("EventDetail", { eventId: event.id })
-                }
-              >
-                <EventCard event={event} />
-              </TouchableOpacity>
-            ))}
-          </View>
 
           {/* Conteúdo de abas */}
           {loading ? (
