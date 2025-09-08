@@ -10,14 +10,10 @@ const api = axios.create({
 // Interceptor para adicionar o token de autenticação do Supabase em cada requisição
 api.interceptors.request.use(
   async (config) => {
-    // Pega a sessão atual do Supabase
     const { data: { session } } = await supabase.auth.getSession();
-
     if (session) {
-      // Se houver uma sessão, adiciona o token de acesso no cabeçalho
       config.headers.Authorization = `Bearer ${session.access_token}`;
     }
-
     return config;
   },
   (error) => {
@@ -25,7 +21,7 @@ api.interceptors.request.use(
   }
 );
 
-// --- SUAS FUNÇÕES DE API ---
+// --- FUNÇÕES DE PERFIL ---
 
 export const getMyProfile = () => {
   return api.get('/profile');
@@ -39,6 +35,25 @@ export const validateInviteCode = (inviteCode) => {
   return api.post('/validate-invite', { inviteCode });
 };
 
-// ... adicione outras funções de API aqui (getEvents, etc.)
+// --- FUNÇÕES DE EVENTOS (ADICIONADAS) ---
+
+export const createEvent = (eventData) => {
+  return api.post('/events', eventData);
+};
+
+export const getEvents = () => {
+  return api.get('/events');
+};
+
+// --- FUNÇÕES DE MATCHES (ADICIONADAS) ---
+
+export const createMatch = (matchData) => {
+  return api.post('/matches', matchData);
+};
+
+export const updateMatchStatus = (matchId, status) => {
+  return api.patch(`/matches/${matchId}`, { status });
+};
 
 export default api;
+

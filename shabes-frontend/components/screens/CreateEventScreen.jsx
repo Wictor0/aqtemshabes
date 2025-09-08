@@ -25,8 +25,10 @@ import { Select } from "../ui/Select";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import Icon from "../ui/Icon";
 
-// Hooks & Utils
+// Hooks, API & Utils
 import { toast } from "../../hooks/use-toast";
+import { createEvent } from "../../services/api"; // 1. Importar a função da API
+import { useAuth } from "../../context/AuthContext"; // 2. Importar o hook de autenticação
 
 // Options for Select components
 const hostAgeGroupOptions = [
@@ -63,6 +65,7 @@ const SelectedLanguages = ({ selected, onRemove }) => {
 };
 
 export default function CreateEventScreen({ navigation }) {
+  const { user } = useAuth(); // 3. Obter o usuário logado para saber quem é o anfitrião
   const [isLoading, setIsLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -72,7 +75,7 @@ export default function CreateEventScreen({ navigation }) {
     description: "",
     date: new Date(),
     fullAddress: "",
-    approximateAddress: "", // Bairro/Cidade
+    approximateAddress: "",
     maxGuests: 4,
     hostAgeGroup: "families",
     targetAudience: "any",
@@ -113,16 +116,38 @@ export default function CreateEventScreen({ navigation }) {
     );
   };
 
+  // 4. Função handleSubmit ATUALIZADA para chamar a API real
   const handleSubmit = async () => {
     if (!formData.title.trim() || !formData.fullAddress.trim() || !formData.approximateAddress.trim()) {
       return toast({ type: "error", title: "Campos obrigatórios", description: "Por favor, preencha o título e os dois campos de endereço." });
     }
     
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    toast({ type: "success", title: "Evento criado com sucesso!" });
-    setIsLoading(false);
-    navigation.goBack();
+    try {
+      // Mapeia os nomes do formulário para os nomes das colunas do banco de dados
+      const eventPayload = {
+        title: formData.title,
+        description: formData.description,
+        date: formData.date.toISOString(),
+        full_address: formData.fullAddress,
+        approximate_address: formData.approximateAddress,
+        max_guests: formData.maxGuests,
+        host_age_group: formData.hostAgeGroup,
+        target_audience: formData.targetAudience,
+        languages: formData.languages,
+        host_id: user.id, // Adiciona o ID do anfitrião
+      };
+
+      await createEvent(eventPayload); // Chama a API para criar o evento
+      
+      toast({ type: "success", title: "Evento criado com sucesso!" });
+      navigation.goBack();
+    } catch (error) {
+      console.error("Erro ao criar evento:", error);
+      toast({ type: "error", title: "Erro ao criar evento", description: "Ocorreu um problema ao salvar. Tente novamente." });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -140,7 +165,7 @@ export default function CreateEventScreen({ navigation }) {
                   <CardDescription>Preencha os detalhes para o seu Shabat.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* Title and Description */}
+                  {/* ... (o resto do seu JSX do formulário continua o mesmo) ... */}
                   <View style={styles.formSection}>
                     <Label>Título do Evento</Label>
                     <Input value={formData.title} onChangeText={(v) => handleInputChange("title", v)} placeholder="Ex: Shabat Familiar em Jardins" />
@@ -149,8 +174,6 @@ export default function CreateEventScreen({ navigation }) {
                     <Label>Descrição</Label>
                     <Textarea value={formData.description} onChangeText={(v) => handleInputChange("description", v)} placeholder="Conte um pouco sobre o seu evento..." />
                   </View>
-                  
-                  {/* Date */}
                   <View style={styles.formSection}>
                     <Label>Data do Evento</Label>
                     {Platform.OS === 'android' && (
@@ -171,8 +194,6 @@ export default function CreateEventScreen({ navigation }) {
                         </View>
                     )}
                   </View>
-
-                  {/* Address */}
                   <View style={styles.formSection}>
                     <Label>Endereço Completo (Privado)</Label>
                     <Input value={formData.fullAddress} onChangeText={(v) => handleInputChange("fullAddress", v)} placeholder="Rua, número, apto, CEP" />
@@ -183,8 +204,6 @@ export default function CreateEventScreen({ navigation }) {
                     <Input value={formData.approximateAddress} onChangeText={(v) => handleInputChange("approximateAddress", v)} placeholder="Bairro, Cidade" />
                     <Text style={styles.helperText}>Esta é a localização que aparecerá publicamente.</Text>
                   </View>
-                  
-                  {/* Event Details */}
                   <View style={styles.formSection}>
                     <Label>Nº de Convidados</Label>
                     <Input value={String(formData.maxGuests)} onChangeText={(v) => handleInputChange("maxGuests", Number(v))} keyboardType="numeric" />
@@ -197,8 +216,6 @@ export default function CreateEventScreen({ navigation }) {
                     <Label>Público Alvo do Evento</Label>
                     <Select options={targetAudienceOptions} selectedValue={formData.targetAudience} onValueChange={(v) => handleInputChange("targetAudience", v)} />
                   </View>
-
-                  {/* Languages */}
                   <View style={styles.formSection}>
                     <Label>Idiomas Falados no Evento</Label>
                     <SelectedLanguages selected={formData.languages} onRemove={removeLanguage} />
@@ -207,8 +224,6 @@ export default function CreateEventScreen({ navigation }) {
                       <Text>Adicionar Idioma</Text>
                     </Button>
                   </View>
-
-                  {/* Consent Agreement */}
                   <View style={styles.consentSection}>
                     <Switch
                       trackColor={{ false: "#E5E7EB", true: "#81b0ff" }}
@@ -219,8 +234,6 @@ export default function CreateEventScreen({ navigation }) {
                     />
                     <Text style={styles.consentText}>Eu li e concordo com os termos de segurança e responsabilidade da comunidade.</Text>
                   </View>
-
-                  {/* Submit Button */}
                   <Button onPress={handleSubmit} disabled={isLoading || !agreedToTerms} style={{ marginTop: 20 }} variant="host">
                     {isLoading ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Criar Evento"}
                   </Button>
