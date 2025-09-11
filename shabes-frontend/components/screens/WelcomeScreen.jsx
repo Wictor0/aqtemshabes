@@ -9,7 +9,8 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
-  Image, // 1. Importe o componente Image
+  Image,
+  TouchableOpacity, // 👈 importei aqui
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -34,6 +35,9 @@ export default function WelcomeScreen({ navigation }) {
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // 👇 estado pra controlar visibilidade da senha
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -87,10 +91,8 @@ export default function WelcomeScreen({ navigation }) {
                   colors={["transparent", "transparent"]}
                   style={styles.logoContainer}
                 >
-                  {/* Para usar o seu logo, coloque o ficheiro (ex: logo.png) na pasta 'assets/images' */}
-                  {/* e altere o 'require' para: require('../../assets/images/logo.png') */}
                   <Image
-                    source={require("../../assets/images/icon.png")} // Usando o ícone da app como exemplo
+                    source={require("../../assets/images/icon.png")}
                     style={styles.logo}
                   />
                 </LinearGradient>
@@ -117,12 +119,23 @@ export default function WelcomeScreen({ navigation }) {
                   </View>
                   <View style={styles.formSection}>
                     <Label>Senha</Label>
-                    <Input
-                      value={password}
-                      onChangeText={setPassword}
-                      placeholder="••••••••"
-                      type="password"
-                    />
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Input
+                        value={password}
+                        onChangeText={setPassword}
+                        placeholder="••••••••"
+                        type={showPassword ? "text" : "password"} // 👈 alterna
+                        style={{ flex: 1 }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowPassword(!showPassword)}
+                        style={{ marginLeft: 8 }}
+                      >
+                        <Text style={{ fontSize: 16 }}>
+                          {showPassword ? "🙈" : "🐵"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </CardContent>
                 <CardFooter>
@@ -192,12 +205,12 @@ const styles = StyleSheet.create({
   },
   heroSection: { alignItems: "center", gap: 12, marginBottom: 16 },
   logoContainer: {
-    width: 120, // Aumentado de 80
-    height: 120, // Aumentado de 80
-    borderRadius: 60, // Metade da nova largura/altura
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     alignItems: "center",
     justifyContent: "center",
-    padding: 20, // Ajustado para o novo tamanho
+    padding: 20,
   },
   logo: {
     width: "100%",

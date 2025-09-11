@@ -10,24 +10,24 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
+// UI Components
 import { Button } from "../ui/Button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "../ui/Card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { Textarea } from "../ui/Textarea";
 import LoadingSpinner from "../ui/LoadingSpinner";
-import { toast } from "../../hooks/use-toast";
-import { mockEvents } from "../../lib/mock-data";
-import { formatShabbatDate, formatTime } from "../../lib/utils";
 import Icon from "../ui/Icon";
+
+// Hooks, API & Utils
+import { useAuth } from "../../context/AuthContext";
+import { getEventById, createMatch } from "../../services/api";
+import { toast } from "../../hooks/use-toast";
+import { formatShabbatDate } from "../../lib/utils";
 
 export default function EventDetailScreen({ route, navigation }) {
   const { eventId } = route.params;
+  const { user } = useAuth();
+
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showInterestForm, setShowInterestForm] = useState(false);
@@ -35,9 +35,18 @@ export default function EventDetailScreen({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const eventData = mockEvents.find((e) => e.id === eventId);
-    setEvent(eventData);
-    setLoading(false);
+    const fetchEvent = async () => {
+      try {
+        const response = await getEventById(eventId);
+        setEvent(response.data);
+      } catch (error) {
+        console.error("Erro ao buscar detalhes do evento:", error);
+        toast({ type: "error", title: "Não foi possível carregar o evento." });
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEvent();
   }, [eventId]);
 
   const handleExpressInterest = async () => {
@@ -47,16 +56,31 @@ export default function EventDetailScreen({ route, navigation }) {
         title: "Por favor, escreva uma mensagem pessoal",
       });
     }
+
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast({
-      type: "success",
-      title: "Interesse enviado com sucesso!",
-      description: "O anfitrião foi notificado.",
-    });
-    setIsSubmitting(false);
-    setShowInterestForm(false);
-    navigation.goBack();
+    try {
+      const matchData = {
+        event_id: eventId,
+        guest_id: user.id,
+        personal_message: personalMessage,
+      };
+      await createMatch(matchData);
+      toast({
+        type: "success",
+        title: "Interesse enviado com sucesso!",
+        description: "O anfitrião foi notificado.",
+      });
+      navigation.goBack();
+    } catch (error) {
+      console.error("Erro ao enviar interesse:", error);
+      if (error.response?.status === 409) {
+        toast({ type: "error", title: "Pedido já enviado", description: "Você já demonstrou interesse neste evento." });
+      } else {
+        toast({ type: "error", title: "Erro ao enviar pedido", description: "Tente novamente mais tarde." });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -76,15 +100,12 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   }
 
-  const spotsLeft = event.maxGuests - event.currentGuests;
+  const spotsLeft = event.maxGuests - (event.currentGuests || 0);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
           <Icon name="chevron-left" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Evento</Text>
@@ -102,38 +123,26 @@ export default function EventDetailScreen({ route, navigation }) {
               <Text style={styles.description}>{event.description}</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
-                  <Icon
-                    name="calendar-month-outline"
-                    color="#4F46E5"
-                    size={20}
-                  />
+                  <Icon name="calendar-month-outline" color="#4F46E5" size={20} />
                   <Text>{formatShabbatDate(new Date(event.date))}</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Icon name="clock-outline" color="#7C3AED" size={20} />
-                  <Text>
-                    {formatTime(event.startTime)} - {formatTime(event.endTime)}
-                  </Text>
                 </View>
                 <View style={styles.detailItem}>
                   <Icon name="map-marker-outline" color="#EC4899" size={20} />
                   <Text>{event.approximateAddress}</Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <Icon
-                    name="account-group-outline"
-                    color="#10B981"
-                    size={20}
-                  />
+                  <Icon name="account-group-outline" color="#10B981" size={20} />
                   <Text>
-                    {event.currentGuests}/{event.maxGuests} convidados
+                    {event.currentGuests || 0}/{event.maxGuests} convidados
                   </Text>
                 </View>
               </View>
               <View style={styles.tagsContainer}>
-                <Badge variant="outline">{event.dietary}</Badge>
-                <Badge variant="outline">{event.ageGroup}</Badge>
-                <Badge variant="outline">{event.language}</Badge>
+                {event.hostAgeGroup && <Badge variant="outline">Anfitriões: {event.hostAgeGroup}</Badge>}
+                {event.targetAudience && <Badge variant="outline">Público: {event.targetAudience}</Badge>}
+                {event.languages?.map((lang) => (
+                  <Badge key={lang} variant="outline">{lang}</Badge>
+                ))}
               </View>
             </CardContent>
           </Card>
@@ -183,9 +192,9 @@ export default function EventDetailScreen({ route, navigation }) {
               <Button
                 variant="secondary"
                 onPress={() => setShowInterestForm(true)}
-                disabled={spotsLeft === 0}
+                disabled={spotsLeft <= 0}
               >
-                {spotsLeft === 0 ? "Esgotado" : "Tenho Interesse"}
+                {spotsLeft <= 0 ? "Esgotado" : "Tenho Interesse"}
               </Button>
             </LinearGradient>
           )}
@@ -206,17 +215,9 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
     ...Platform.select({
-      ios: {
-        paddingTop: 12,
-        paddingBottom: 12,
-      },
-      android: {
-        paddingTop: 40,
-        paddingBottom: 15,
-      },
-      default: {
-        paddingVertical: 12,
-      },
+      ios: { paddingTop: 12, paddingBottom: 12 },
+      android: { paddingTop: 40, paddingBottom: 15 },
+      default: { paddingVertical: 12 },
     }),
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
@@ -250,3 +251,4 @@ const styles = StyleSheet.create({
   },
   actionsContainer: { flexDirection: "row", gap: 12, marginTop: 16 },
 });
+
