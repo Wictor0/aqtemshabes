@@ -44,7 +44,7 @@ export async function POST(request) {
   }
 }
 
-// --- FUNÇÃO GET FINAL E DEFINITIVA ---
+// --- FUNÇÃO GET FINAL E OTIMIZADA ---
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -57,7 +57,6 @@ export async function GET(request) {
     
     const supabase = createRouteHandlerClient({ cookies });
 
-    // Autenticação (essencial para saber QUEM está a pedir)
     const authHeader = request.headers.get('Authorization');
      if (!authHeader) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
@@ -68,47 +67,46 @@ export async function GET(request) {
        return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
     }
 
-    // Usaremos o ID do utilizador autenticado para a segurança
-    const currentUserId = user.id;
+    // MODIFICAÇÃO: A consulta agora é explícita, usando os nomes das chaves estrangeiras.
+    const baseQuery = `
+      id, status, personal_message, created_at,
+      guest:profiles!matches_guest_id_fkey(id, full_name),
+      event:events!matches_event_id_fkey(
+        id, title, date,
+        host:profiles!events_host_id_fkey(id, full_name)
+      )
+    `;
 
     if (hostId) {
-      // 1. Encontra os eventos onde o utilizador atual é o anfitrião
+      // Etapa 1: Encontra os eventos do anfitrião
       const { data: events, error: eventsError } = await supabase
         .from('events')
         .select('id')
-        .eq('host_id', currentUserId);
+        .eq('host_id', hostId);
 
       if (eventsError) throw eventsError;
 
       const eventIds = events.map(e => e.id);
 
       if (eventIds.length === 0) {
-        return NextResponse.json([]); // O anfitrião não tem eventos, então não tem pedidos
+        return NextResponse.json([]);
       }
 
-      // 2. Busca os matches que pertencem a esses eventos
+      // Etapa 2: Busca os matches para esses eventos, com todos os nomes
       const { data, error } = await supabase
         .from('matches')
-        .select(`
-          id, status, personal_message, created_at,
-          guest:profiles (id, full_name),
-          event:events (id, title, date)
-        `)
+        .select(baseQuery)
         .in('event_id', eventIds);
 
       if (error) throw error;
       return NextResponse.json(data);
 
     } else {
-      // A consulta para o convidado é mais simples: busca matches onde o guest_id é o do utilizador atual
+      // A consulta para o convidado
       const { data, error } = await supabase
         .from('matches')
-        .select(`
-          id, status, personal_message, created_at,
-          guest:profiles (id, full_name),
-          event:events (id, title, date, host:profiles(id, full_name))
-        `)
-        .eq('guest_id', currentUserId);
+        .select(baseQuery)
+        .eq('guest_id', guestId);
       
       if (error) throw error;
       return NextResponse.json(data);

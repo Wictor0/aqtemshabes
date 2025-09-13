@@ -20,8 +20,7 @@ api.interceptors.request.use(
   }
 );
 
-// --- Funções de API ---
-
+// --- Funções de API Existentes ---
 export const getMyProfile = () => {
   return api.get('/profile');
 };
@@ -50,13 +49,26 @@ export const updateMatchStatus = (matchId, status) => {
   return api.patch(`/matches/${matchId}`, { status });
 };
 
-// --- FUNÇÕES DE BUSCA CORRIGIDAS E EXPLÍCITAS ---
 export const getMatchesForGuest = (guestId) => {
   return api.get(`/matches?guest_id=${guestId}`);
 };
 
 export const getMatchesForHost = (hostId) => {
   return api.get(`/matches?host_id=${hostId}`);
+};
+
+// Adicionada função unificada que pode ser necessária
+export const getMyMatches = () => {
+  return api.get('/matches');
+};
+
+// --- NOVAS FUNÇÕES DE NOTIFICAÇÕES ADICIONADAS ---
+export const getNotifications = () => {
+  return api.get('/notifications');
+};
+
+export const markNotificationAsRead = (notificationId) => {
+  return api.patch('/notifications', { notificationId });
 };
 
 export default api;

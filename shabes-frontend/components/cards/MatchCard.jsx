@@ -12,14 +12,14 @@ import Icon from "../ui/Icon";
 import { Button } from "../ui/Button";
 import { formatShabbatDate } from "../../lib/utils";
 
-// MODIFICAÇÃO: Status agora em minúsculas para corresponder à base de dados
+// Status agora em minúsculas para corresponder à base de dados
 const MatchStatus = {
   PENDING: "pending",
   ACCEPTED: "accepted",
   DECLINED: "declined",
 };
 
-// --- Funções de Ajuda (sem alterações) ---
+// --- Funções de Ajuda ---
 
 const getStatusBadge = (status) => {
   switch (status) {
@@ -58,20 +58,23 @@ export default function MatchCard({
   const { event, guest, status, personal_message, created_at } = match;
   const isPending = status === MatchStatus.PENDING;
 
+  // Acessa os nomes de forma segura, com um texto alternativo
+  const guestName = match?.guest?.full_name || "Convidado";
+  const hostName = match?.event?.host?.full_name || "Anfitrião";
+  const eventTitle = match?.event?.title || "Evento sem título";
+
   return (
     <Card style={[styles.card, { borderLeftColor: getStatusColor(status) }]}>
       <CardHeader>
         <View style={styles.headerContainer}>
           <View style={{ flex: 1 }}>
             <CardTitle style={styles.cardTitle}>
-              {/* MODIFICAÇÃO: Usa guest.full_name */}
-              {isHost ? guest?.full_name : event?.title}
+              {isHost ? guestName : eventTitle}
             </CardTitle>
             <CardDescription>
-              {/* MODIFICAÇÃO: Usa event.host.full_name */}
               {isHost
-                ? `Interessado em: ${event?.title}`
-                : `Evento de ${event?.host?.full_name}`}
+                ? `enviou um pedido para: "${eventTitle}"`
+                : `Evento de ${hostName}`}
             </CardDescription>
           </View>
           <View style={styles.headerRight}>
@@ -82,14 +85,12 @@ export default function MatchCard({
 
       <CardContent>
         <View style={styles.detailsBox}>
-          <Text style={styles.detailsBoxTitle}>Detalhes do Evento</Text>
           <View style={styles.infoRow}>
             <Icon name="calendar-month-outline" size={16} />
             <Text style={styles.infoText}>
               {formatShabbatDate(new Date(event.date))}
             </Text>
           </View>
-          {/* MODIFICAÇÃO: A linha da hora foi removida, pois a data já contém a informação */}
         </View>
 
         {personal_message && (
@@ -147,8 +148,8 @@ const styles = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderColor: "#F3F4F6",
+    marginTop: 4,
   },
-  detailsBoxTitle: { fontWeight: "500", marginBottom: 4 },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   infoText: { fontSize: 14, color: "#6B7280" },
   messageContainer: {
@@ -164,7 +165,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   messageText: { fontStyle: "italic", color: "#6D28D9" },
-  footerContainer: { marginTop: 8 },
+  footerContainer: { marginTop: 12 },
   timestamp: { fontSize: 12, color: "#9CA3AF" },
   actionsContainer: { flexDirection: "row", paddingTop: 16, gap: 8 },
 });
