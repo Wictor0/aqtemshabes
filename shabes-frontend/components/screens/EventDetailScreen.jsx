@@ -25,7 +25,8 @@ import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
 
 export default function EventDetailScreen({ route, navigation }) {
-  const { eventId } = route.params;
+  // 1. Recebe o novo parâmetro 'origin'
+  const { eventId, origin } = route.params;
   const { user } = useAuth();
 
   const [event, setEvent] = useState(null);
@@ -61,7 +62,6 @@ export default function EventDetailScreen({ route, navigation }) {
     try {
       const matchData = {
         event_id: eventId,
-        guest_id: user.id,
         personal_message: personalMessage,
       };
       await createMatch(matchData);
@@ -74,9 +74,11 @@ export default function EventDetailScreen({ route, navigation }) {
     } catch (error) {
       console.error("Erro ao enviar interesse:", error);
       if (error.response?.status === 409) {
-        toast({ type: "error", title: "Pedido já enviado", description: "Você já demonstrou interesse neste evento." });
+          toast({ type: "error", title: "Pedido já enviado", description: "Você já demonstrou interesse neste evento." });
+      } else if (error.response?.status === 403) {
+          toast({ type: "error", title: "Ação não permitida", description: "Você não pode se inscrever no seu próprio evento." });
       } else {
-        toast({ type: "error", title: "Erro ao enviar pedido", description: "Tente novamente mais tarde." });
+          toast({ type: "error", title: "Erro ao enviar pedido", description: "Tente novamente mais tarde." });
       }
     } finally {
       setIsSubmitting(false);
@@ -100,12 +102,16 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   }
 
-  const spotsLeft = event.maxGuests - (event.currentGuests || 0);
+  const isUserHost = user?.id === event.host_id;
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* --- CABEÇALHO RESTAURADO --- */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={() => navigation.goBack()}
+        >
           <Icon name="chevron-left" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Evento</Text>
@@ -117,7 +123,7 @@ export default function EventDetailScreen({ route, navigation }) {
           <Card style={{ width: "100%" }}>
             <CardHeader>
               <CardTitle style={styles.eventTitle}>{event.title}</CardTitle>
-              <CardDescription>Anfitrião: {event.host?.name}</CardDescription>
+              <CardDescription>Anfitrião: {event.host?.full_name || 'Desconhecido'}</CardDescription>
             </CardHeader>
             <CardContent>
               <Text style={styles.description}>{event.description}</Text>
@@ -128,18 +134,18 @@ export default function EventDetailScreen({ route, navigation }) {
                 </View>
                 <View style={styles.detailItem}>
                   <Icon name="map-marker-outline" color="#EC4899" size={20} />
-                  <Text>{event.approximateAddress}</Text>
+                  <Text>{event.approximate_address}</Text>
                 </View>
                 <View style={styles.detailItem}>
                   <Icon name="account-group-outline" color="#10B981" size={20} />
                   <Text>
-                    {event.currentGuests || 0}/{event.maxGuests} convidados
+                    Até {event.max_guests} convidados
                   </Text>
                 </View>
               </View>
               <View style={styles.tagsContainer}>
-                {event.hostAgeGroup && <Badge variant="outline">Anfitriões: {event.hostAgeGroup}</Badge>}
-                {event.targetAudience && <Badge variant="outline">Público: {event.targetAudience}</Badge>}
+                {event.host_age_group && <Badge variant="outline">Anfitriões: {event.host_age_group}</Badge>}
+                {event.target_audience && <Badge variant="outline">Público: {event.target_audience}</Badge>}
                 {event.languages?.map((lang) => (
                   <Badge key={lang} variant="outline">{lang}</Badge>
                 ))}
@@ -147,57 +153,58 @@ export default function EventDetailScreen({ route, navigation }) {
             </CardContent>
           </Card>
 
-          {showInterestForm ? (
-            <Card style={{ width: "100%" }}>
-              <CardHeader>
-                <CardTitle>Enviar Mensagem Pessoal</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  placeholder="Escreva uma mensagem para o anfitrião..."
-                  value={personalMessage}
-                  onChangeText={setPersonalMessage}
-                />
-                <View style={styles.actionsContainer}>
+          {/* O contentor "Interessado?" continua condicional */}
+          {!isUserHost && origin !== 'home' && (
+            <>
+              {showInterestForm ? (
+                <Card style={{ width: "100%" }}>
+                  <CardHeader>
+                    <CardTitle>Enviar Mensagem Pessoal</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      placeholder="Escreva uma mensagem para o anfitrião..."
+                      value={personalMessage}
+                      onChangeText={setPersonalMessage}
+                    />
+                    <View style={styles.actionsContainer}>
+                      <Button
+                        variant="outline"
+                        style={{ flex: 1 }}
+                        onPress={() => setShowInterestForm(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        style={{ flex: 1 }}
+                        onPress={handleExpressInterest}
+                        disabled={isSubmitting}
+                      >
+                        {isSubmitting ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Enviar"}
+                      </Button>
+                    </View>
+                  </CardContent>
+                </Card>
+              ) : (
+                <LinearGradient
+                  colors={["#4F46E5", "#7C3AED"]}
+                  style={styles.ctaCard}
+                >
+                  <Text style={styles.ctaTitle}>Interessado?</Text>
+                  <Text style={styles.ctaSubtitle}>
+                    Demonstre interesse e envie uma mensagem personalizada.
+                  </Text>
                   <Button
-                    variant="outline"
-                    style={{ flex: 1 }}
-                    onPress={() => setShowInterestForm(false)}
+                    variant="secondary"
+                    onPress={() => setShowInterestForm(true)}
                   >
-                    Cancelar
+                    Tenho Interesse
                   </Button>
-                  <Button
-                    style={{ flex: 1 }}
-                    onPress={handleExpressInterest}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <LoadingSpinner size="small" color="#FFFFFF" />
-                    ) : (
-                      "Enviar"
-                    )}
-                  </Button>
-                </View>
-              </CardContent>
-            </Card>
-          ) : (
-            <LinearGradient
-              colors={["#4F46E5", "#7C3AED"]}
-              style={styles.ctaCard}
-            >
-              <Text style={styles.ctaTitle}>Interessado?</Text>
-              <Text style={styles.ctaSubtitle}>
-                Demonstre interesse e envie uma mensagem personalizada.
-              </Text>
-              <Button
-                variant="secondary"
-                onPress={() => setShowInterestForm(true)}
-                disabled={spotsLeft <= 0}
-              >
-                {spotsLeft <= 0 ? "Esgotado" : "Tenho Interesse"}
-              </Button>
-            </LinearGradient>
+                </LinearGradient>
+              )}
+            </>
           )}
+
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -206,6 +213,7 @@ export default function EventDetailScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
+  // --- ESTILOS DO CABEÇALHO CORRIGIDOS ---
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -214,14 +222,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
+    // Espaçamento específico para cada plataforma
     ...Platform.select({
-      ios: { paddingTop: 12, paddingBottom: 12 },
-      android: { paddingTop: 40, paddingBottom: 15 },
-      default: { paddingVertical: 12 },
+      ios: { paddingTop: 50, paddingBottom: 12 },
+      android: { paddingTop: 40, paddingBottom: 12 },
     }),
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
   iconButton: { padding: 8 },
+  
   container: {
     padding: 16,
     alignItems: "center",

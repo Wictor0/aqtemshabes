@@ -6,12 +6,13 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
+  Image,
+  RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { useAuth } from "../../context/AuthContext";
-// MODIFICAÇÃO: Importa as duas funções explícitas
 import { getMatchesForGuest, getMatchesForHost, updateMatchStatus } from "../../services/api"; 
 import { toast } from "../../hooks/use-toast";
 import { Card, CardContent } from "../ui/Card";
@@ -20,6 +21,7 @@ import Icon from "../ui/Icon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import { formatShabbatDate } from "../../lib/utils";
+import { Badge } from "../ui/Badge";
 
 const StatCard = ({ count, label }) => (
   <Card style={styles.statCard}>
@@ -42,20 +44,17 @@ export default function HomeScreen({ navigation }) {
   const [userMatches, setUserMatches] = useState([]);
   const [hostMatches, setHostMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const nextShabbat = new Date();
 
-  // Esta função agora faz as duas chamadas separadas
   const fetchMatches = useCallback(async () => {
     if (user?.id) {
       try {
-        setLoading(true);
-        // Fazemos as duas chamadas em paralelo para mais eficiência
         const [guestResponse, hostResponse] = await Promise.all([
           getMatchesForGuest(user.id),
           getMatchesForHost(user.id)
         ]);
-
         setUserMatches(guestResponse.data || []);
         setHostMatches(hostResponse.data || []);
       } catch (error) {
@@ -75,11 +74,18 @@ export default function HomeScreen({ navigation }) {
       fetchMatches();
     }, [fetchMatches])
   );
+  
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchMatches();
+    setRefreshing(false);
+  }, [fetchMatches]);
+
 
   const handleUpdateMatch = async (matchId, status) => {
     try {
       await updateMatchStatus(matchId, status);
-      fetchMatches(); // Recarrega os matches para ter a informação mais recente
+      fetchMatches(); 
       toast({
         type: "success",
         title: `Pedido ${status === 'accepted' ? 'aceite' : 'recusado'} com sucesso!`,
@@ -89,7 +95,6 @@ export default function HomeScreen({ navigation }) {
       toast({ type: "error", title: "Ocorreu um erro. Tente novamente." });
     }
   };
-
 
   const guestCounts = {
     pending: userMatches.filter((m) => m.status === "pending").length,
@@ -103,7 +108,12 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.contentWrapper}>
           <TouchableOpacity onPress={() => navigation.navigate("Agenda")}>
             <LinearGradient
@@ -124,7 +134,7 @@ export default function HomeScreen({ navigation }) {
             </LinearGradient>
           </TouchableOpacity>
 
-          {loading ? (
+          {loading && !refreshing ? (
             <View style={styles.loadingContainer}>
               <LoadingSpinner size="large" />
             </View>
@@ -145,7 +155,10 @@ export default function HomeScreen({ navigation }) {
                     <TouchableOpacity
                       key={match.id}
                       onPress={() =>
-                        navigation.navigate("MatchDetail", { matchId: match.id })
+                        navigation.navigate("EventDetail", { 
+                          eventId: match.event.id,
+                          origin: 'home' // Adicionado parâmetro de origem
+                        })
                       }
                     >
                       <MatchCard match={match} isHost={false} />
@@ -166,7 +179,10 @@ export default function HomeScreen({ navigation }) {
                     <TouchableOpacity
                       key={match.id}
                       onPress={() =>
-                        navigation.navigate("MatchDetail", { matchId: match.id })
+                        navigation.navigate("EventDetail", { 
+                          eventId: match.event.id,
+                          origin: 'home' // Adicionado parâmetro de origem
+                        })
                       }
                     >
                       <MatchCard 

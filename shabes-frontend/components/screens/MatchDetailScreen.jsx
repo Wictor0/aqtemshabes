@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,16 +8,22 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect } from "@react-navigation/native";
 
 import { useAuth } from "../../context/AuthContext";
 import { Button } from "../ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/Card";
-import { Badge } from "../ui/Badge";
 import LoadingSpinner from "../ui/LoadingSpinner";
-import { mockEventMatches, MatchStatus } from "../../lib/mock-data";
 import { toast } from "../../hooks/use-toast";
-import Icon from "../ui/Icon"; // 1. Importe o componente de Ícone
+import Icon from "../ui/Icon";
+// MODIFICAÇÃO: Importa as funções reais da API
+import { getMatchById, updateMatchStatus } from "../../services/api";
+
+const MatchStatus = {
+  PENDING: "pending",
+  ACCEPTED: "accepted",
+  DECLINED: "declined",
+};
 
 export default function MatchDetailScreen({ route, navigation }) {
   const { user } = useAuth();
@@ -25,26 +31,56 @@ export default function MatchDetailScreen({ route, navigation }) {
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const matchData = mockEventMatches.find((m) => m.id === matchId);
-    setMatch(matchData);
-    setLoading(false);
-  }, [matchId]);
+  // MODIFICAÇÃO: Lógica de busca de dados foi reestruturada para usar a API
+  useFocusEffect(
+    useCallback(() => {
+      const fetchMatchDetails = async () => {
+        try {
+          setLoading(true);
+          const response = await getMatchById(matchId);
+          setMatch(response.data);
+        } catch (error) {
+          console.error("Erro ao buscar detalhes do match:", error);
+          toast({ type: "error", title: "Não foi possível carregar os detalhes." });
+          navigation.goBack();
+        } finally {
+          setLoading(false);
+        }
+      };
 
-  const handleMatchAction = (action) => {
-    let newStatus = match.status;
-    if (action === "accept") newStatus = MatchStatus.ACCEPTED;
-    if (action === "decline") newStatus = MatchStatus.DECLINED;
+      fetchMatchDetails();
+    }, [matchId, navigation])
+  );
 
-    setMatch((prev) => ({ ...prev, status: newStatus }));
-    toast({
-      type: "success",
-      title: `Match ${action === "accept" ? "aceite" : "recusado"}!`,
-    });
+  // MODIFICAÇÃO: Lógica para aceitar/recusar, agora ligada à API
+  const handleMatchAction = async (action) => {
+    try {
+      const newStatus = action === "accept" ? "accepted" : "declined";
+      await updateMatchStatus(match.id, newStatus);
+      setMatch((prev) => ({ ...prev, status: newStatus }));
+      toast({
+        type: "success",
+        title: `Pedido ${action === "accept" ? "aceite" : "recusado"}!`,
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar o match:", error);
+      toast({ type: "error", title: "Ocorreu um erro ao processar a sua ação." });
+    }
   };
 
   const handleWhatsAppChat = () => {
-    Linking.openURL("https://wa.me/5511999999999"); // Número de exemplo
+    const isUserHost = user?.id === match.event?.host?.id;
+    const otherUser = isUserHost ? match.guest : match.event?.host;
+    
+    if (otherUser?.phone) {
+        const phoneNumber = otherUser.phone.replace(/\D/g, '');
+        const whatsappUrl = `https://wa.me/55${phoneNumber}`; // Assumindo código do Brasil
+        Linking.openURL(whatsappUrl).catch(() => {
+            toast({ type: "error", title: "Não foi possível abrir o WhatsApp." });
+        });
+    } else {
+        toast({ type: "error", title: "Telefone não disponível." });
+    }
   };
 
   if (loading) {
@@ -64,18 +100,16 @@ export default function MatchDetailScreen({ route, navigation }) {
     );
   }
 
-  const isHost = user?.id === match.event?.host.id;
+  const isHost = user?.id === match.event?.host?.id;
   const otherUser = isHost ? match.guest : match.event?.host;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.iconButton}
           onPress={() => navigation.goBack()}
         >
-          {/* 2. Ícone de "voltar" atualizado */}
           <Icon name="chevron-left" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Match</Text>
@@ -83,20 +117,6 @@ export default function MatchDetailScreen({ route, navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Match Score */}
-        <LinearGradient
-          colors={["#4F46E5", "#7C3AED"]}
-          style={styles.scoreCard}
-        >
-          <View>
-            <Text style={styles.scoreTitle}>Compatibilidade</Text>
-            <Text style={styles.scoreSubtitle}>Baseada em preferências</Text>
-          </View>
-          <Text style={styles.scorePercentage}>
-            {(match.matchScore * 100).toFixed(0)}%
-          </Text>
-        </LinearGradient>
-
         {/* Event Details */}
         <Card style={{ width: "100%" }}>
           <CardHeader>
@@ -104,7 +124,7 @@ export default function MatchDetailScreen({ route, navigation }) {
           </CardHeader>
           <CardContent>
             <Text style={styles.infoText}>
-              Anfitrião: {match.event.host.name}
+              Anfitrião: {match.event.host.full_name}
             </Text>
             <Text style={styles.infoText}>
               Data: {new Date(match.event.date).toLocaleDateString("pt-BR")}
@@ -116,7 +136,7 @@ export default function MatchDetailScreen({ route, navigation }) {
         <Card style={{ width: "100%" }}>
           <CardHeader>
             <CardTitle>
-              {isHost ? "Convidado" : "Anfitrião"}: {otherUser.name}
+              {isHost ? "Convidado" : "Anfitrião"}: {otherUser.full_name}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -148,7 +168,7 @@ export default function MatchDetailScreen({ route, navigation }) {
           </Card>
         )}
 
-        {/* Confirmed/Declined Status */}
+        {/* Confirmed Status */}
         {match.status === MatchStatus.ACCEPTED && (
           <Card style={{ width: "100%", backgroundColor: "#D1FAE5" }}>
             <CardContent style={styles.statusContent}>
@@ -188,18 +208,9 @@ const styles = StyleSheet.create({
   iconButton: { padding: 8 },
   container: { padding: 16, gap: 24 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scoreCard: {
-    padding: 20,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  scoreTitle: { fontSize: 18, fontWeight: "600", color: "white" },
-  scoreSubtitle: { color: "rgba(255,255,255,0.8)" },
-  scorePercentage: { fontSize: 32, fontWeight: "bold", color: "white" },
   infoText: { fontSize: 16, marginBottom: 4 },
-  actionsContainer: { flexDirection: "row", gap: 12 },
-  statusContent: { paddingTop: 16, alignItems: "center", gap: 12 },
+  actionsContainer: { flexDirection: "row", gap: 12, paddingTop: 16 },
+  statusContent: { paddingTop: 24, alignItems: "center", gap: 12 },
   statusText: { fontSize: 18, fontWeight: "bold", color: "#065F46" },
 });
+

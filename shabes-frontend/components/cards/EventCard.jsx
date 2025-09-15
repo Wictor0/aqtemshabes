@@ -54,28 +54,19 @@ export default function EventCard({
       <CardContent>
         <View style={styles.infoSection}>
           <View style={styles.infoRow}>
-            <Icon name="calendar-month-outline" size={16} />
+            <Icon name="calendar-month-outline" size={16} color="#6B7280" />
             <Text style={styles.infoText}>
-              {new Date(event.date).toLocaleDateString("pt-BR")}
+              {new Date(event.date).toLocaleDateString("pt-BR", { weekday: 'long', day: '2-digit', month: 'long' })}
             </Text>
           </View>
           <View style={styles.infoRow}>
-            <Icon name="clock-outline" size={16} />
-            <Text style={styles.infoText}>
-              {formatTime(event.startTime)} - {formatTime(event.endTime)}
-            </Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Icon name="map-marker-outline" size={16} />
-            <Text style={styles.infoText}>{event.approximateAddress}</Text>
-            {showDistance && distance && (
-              <Badge variant="secondary">{distance}</Badge>
-            )}
+            <Icon name="map-marker-outline" size={16} color="#6B7280" />
+            <Text style={styles.infoText}>{event.approximate_address}</Text>
           </View>
           <View style={styles.infoRow}>
             <Icon name="account-group-outline" size={16} />
             <Text style={styles.infoText}>
-              {event.currentGuests}/{event.maxGuests} pessoas
+              Até {event.max_guests} convidados
             </Text>
             {spotsLeft > 0 && (
               <Badge variant="outline">

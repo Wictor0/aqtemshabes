@@ -71,5 +71,10 @@ export const markNotificationAsRead = (notificationId) => {
   return api.patch('/notifications', { notificationId });
 };
 
+export const getMatchById = (matchId) => {
+  return api.get(`/matches/${matchId}`);
+};
+
+
 export default api;
 
