@@ -11,8 +11,69 @@ import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import Icon from "../ui/Icon";
 
-// Helper function for formatting time
-const formatTime = (timeStr) => (timeStr ? timeStr.substring(0, 5) : "");
+/**
+ * Mapas para exibir labels amigáveis em português
+ */
+const hostAgeGroupLabels = {
+  families: "Família",
+  "young-adults": "Jovens (20-35)",
+  adults: "Adultos (35+)",
+  seniors: "Seniores (60+)",
+  mixed: "Misto",
+};
+
+const targetAudienceLabels = {
+  any: "Qualquer pessoa",
+  families: "Apenas Famílias",
+  "young-adults": "Apenas Jovens",
+  seniors: "Apenas Seniores",
+};
+
+/**
+ * Formatação manual em pt-BR (não usa Intl para evitar engines que não respeitam locale)
+ */
+const WEEKDAYS_PT = [
+  "Domingo",
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+];
+const MONTHS_PT = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+function formatDateLongPT(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return "";
+  const wd = WEEKDAYS_PT[d.getDay()];
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = MONTHS_PT[d.getMonth()];
+  return `${wd}, ${day} de ${month}`;
+}
+
+function formatTimePT(dateString) {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
 
 export default function EventCard({
   event,
@@ -22,7 +83,6 @@ export default function EventCard({
   matchScore,
 }) {
   const [isInterested, setIsInterested] = useState(false);
-
   if (!event) return null;
 
   const handleInterest = () => {
@@ -30,7 +90,16 @@ export default function EventCard({
     onInterest?.(event.id);
   };
 
-  const spotsLeft = event.maxGuests - event.currentGuests;
+  // spotsLeft — compatível com nomes do banco
+  const spotsLeft =
+    typeof event.max_guests === "number"
+      ? (typeof event.current_guests === "number"
+          ? event.max_guests - event.current_guests
+          : event.max_guests)
+      : 0;
+
+  const ageLabel = hostAgeGroupLabels[event.host_age_group] ?? event.host_age_group;
+  const audienceLabel = targetAudienceLabels[event.target_audience] ?? event.target_audience;
 
   return (
     <Card style={[styles.card, { borderLeftColor: "#3B82F6" }]}>
@@ -38,9 +107,14 @@ export default function EventCard({
         <View style={styles.headerContainer}>
           <View style={{ flex: 1 }}>
             <CardTitle style={styles.cardTitle}>{event.title}</CardTitle>
-            <CardDescription>Por {event.host?.name}</CardDescription>
+            {event.host?.full_name ? (
+              <CardDescription>Por {event.host.full_name}</CardDescription>
+            ) : (
+              <CardDescription>Por Desconhecido</CardDescription>
+            )}
           </View>
-          {matchScore && (
+
+          {typeof matchScore === "number" && (
             <View style={styles.matchScoreBadge}>
               <Icon name="star" color="#D97706" size={12} />
               <Text style={styles.matchScoreText}>
@@ -53,41 +127,61 @@ export default function EventCard({
 
       <CardContent>
         <View style={styles.infoSection}>
-          <View style={styles.infoRow}>
-            <Icon name="calendar-month-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>
-              {new Date(event.date).toLocaleDateString("pt-BR", { weekday: 'long', day: '2-digit', month: 'long' })}
-            </Text>
-          </View>
+          {/* Data + Hora (formatadas em pt-BR manualmente) */}
+          {event.date && (
+            <View style={styles.infoRow}>
+              <Icon name="calendar-month-outline" size={16} color="#6B7280" />
+              <Text style={styles.infoText}>
+                {formatDateLongPT(event.date)}
+                {event.date ? ` • ${formatTimePT(event.date)}` : ""}
+              </Text>
+            </View>
+          )}
+
+          {/* Localização */}
           <View style={styles.infoRow}>
             <Icon name="map-marker-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>{event.approximate_address}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Icon name="account-group-outline" size={16} />
             <Text style={styles.infoText}>
-              Até {event.max_guests} convidados
+              {event.approximate_address || "Local não informado"}
             </Text>
-            {spotsLeft > 0 && (
-              <Badge variant="outline">
-                {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""}
-              </Badge>
-            )}
           </View>
+
+          {/* Capacidade */}
+          {typeof event.max_guests === "number" && (
+            <View style={styles.infoRow}>
+              <Icon name="account-group-outline" size={16} />
+              <Text style={styles.infoText}>
+                Até {event.max_guests} convidados
+              </Text>
+              {spotsLeft > 0 && (
+                <Badge variant="outline">
+                  {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""}
+                </Badge>
+              )}
+            </View>
+          )}
         </View>
 
+        {/* Descrição curta */}
         {event.description && (
           <Text style={styles.descriptionText} numberOfLines={2}>
             {event.description}
           </Text>
         )}
 
+        {/* Tags: mostrar Label legível para faixa etária / público e os idiomas */}
         <View style={styles.tagsContainer}>
-          <Badge variant="warning">{event.dietary}</Badge>
-          <Badge variant="outline">{event.ageGroup}</Badge>
-          <Badge variant="outline">{event.language}</Badge>
+          {ageLabel && <Badge variant="outline">{ageLabel}</Badge>}
+          {audienceLabel && <Badge variant="outline">{audienceLabel}</Badge>}
+          {Array.isArray(event.languages) &&
+            event.languages.map((lang) => (
+              <Badge key={lang} variant="outline">
+                {lang}
+              </Badge>
+            ))}
         </View>
 
+        {/* Botão de interesse */}
         {onInterest && (
           <View style={styles.actionsContainer}>
             <Button

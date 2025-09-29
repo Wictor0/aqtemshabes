@@ -1,16 +1,22 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
-  TouchableOpacity,
   Platform,
-  FlatList, // Usaremos a lista nativa do React Native
+  FlatList,
+  ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { useFocusEffect } from '@react-navigation/native';
+
 import { Card } from '../ui/Card';
 import Icon from '../ui/Icon';
+import { useAuth } from '../../context/AuthContext';
+import { getMatchesForGuest, getMatchesForHost } from '../../services/api';
+import { toast } from '../../hooks/use-toast';
 
 // Configuração de idioma para o calendário
 LocaleConfig.locales['pt-br'] = {
@@ -21,30 +27,85 @@ LocaleConfig.locales['pt-br'] = {
 };
 LocaleConfig.defaultLocale = 'pt-br';
 
-// Nossos dados de evento de exemplo
-const mockEvents = [
-  { id: '1', title: 'Jantar de Shabat na Família Cohen', time: '19:00 - 22:00', location: 'Jardins, São Paulo', date: '2025-09-05' },
-  { id: '2', title: 'Almoço de Shabat Comunitário', time: '12:30 - 15:00', location: 'Sinagoga Beit Chabad', date: '2025-09-06' },
-  { id: '3', title: 'Shabat com amigos', time: '19:30 - 22:30', location: 'Pinheiros, São Paulo', date: '2025-09-12' },
-  { id: '4', title: 'Outro Jantar', time: '20:00 - 23:00', location: 'Casa da Família Levy', date: '2025-09-12' },
-];
+// --- FUNÇÕES DE FORMATAÇÃO CORRIGIDAS ---
+// Esta função agora converte a data de forma segura, evitando problemas de fuso horário.
+const toDateString = (date) => {
+  const localDate = new Date(date);
+  const year = localDate.getFullYear();
+  const month = String(localDate.getMonth() + 1).padStart(2, '0');
+  const day = String(localDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-const toDateString = (date) => date.toISOString().split('T')[0];
+const formatTime = (dateString) => new Date(dateString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 export default function AgendaScreen({ navigation }) {
+  const { user } = useAuth();
   const today = toDateString(new Date());
-  // 1. Estado para guardar a data que o usuário selecionou no calendário
+  
   const [selectedDate, setSelectedDate] = useState(today);
+  const [confirmedEvents, setConfirmedEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // 2. Agrupamos os eventos por data uma única vez para performance
+  const fetchAgendaEvents = useCallback(async () => {
+    if (!user?.id) {
+        setLoading(false);
+        return;
+    };
+    try {
+      setLoading(true);
+      const [guestResponse, hostResponse] = await Promise.all([
+          getMatchesForGuest(user.id),
+          getMatchesForHost(user.id)
+      ]);
+      const guestMatches = guestResponse.data || [];
+      const hostMatches = hostResponse.data || [];
+
+      const guestCommitments = guestMatches
+        .filter(match => match.status === 'accepted' && match.event)
+        .map(match => ({
+            id: match.event.id,
+            title: match.event.title,
+            date: toDateString(match.event.date),
+            time: formatTime(match.event.date),
+            location: match.event.approximate_address || "Local não informado",
+        }));
+
+      const hostCommitments = hostMatches
+        .filter(match => match.event)
+        .map(match => ({
+            id: match.event.id,
+            title: match.event.title,
+            date: toDateString(match.event.date),
+            time: formatTime(match.event.date),
+            location: match.event.approximate_address || "Local não informado",
+        }));
+        
+      const allCommitments = [...guestCommitments, ...hostCommitments];
+      const uniqueCommitments = Array.from(new Map(allCommitments.map(item => [item['id'], item])).values());
+
+      setConfirmedEvents(uniqueCommitments);
+    } catch (error) {
+      console.error("Erro ao buscar a agenda:", error);
+      toast({ type: 'error', title: 'Não foi possível carregar a sua agenda.' });
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAgendaEvents();
+    }, [fetchAgendaEvents])
+  );
+
   const groupedEvents = useMemo(() => {
-    return mockEvents.reduce((acc, event) => {
+    return confirmedEvents.reduce((acc, event) => {
       (acc[event.date] = acc[event.date] || []).push(event);
       return acc;
     }, {});
-  }, []);
+  }, [confirmedEvents]);
 
-  // 3. Criamos as marcações (bolinhas) para os dias que têm eventos
   const markedDates = useMemo(() => {
     return Object.keys(groupedEvents).reduce((acc, date) => {
       acc[date] = { marked: true, dotColor: '#4F46E5' };
@@ -52,13 +113,11 @@ export default function AgendaScreen({ navigation }) {
     }, {});
   }, [groupedEvents]);
 
-  // Adicionamos a marcação para o dia selecionado
   const finalMarkedDates = {
     ...markedDates,
     [selectedDate]: { ...markedDates[selectedDate], selected: true, selectedColor: '#7C3AED' }
   };
 
-  // Itens para mostrar na lista de baixo, baseado na data selecionada
   const eventsForSelectedDay = groupedEvents[selectedDate] || [];
 
   return (
@@ -71,7 +130,6 @@ export default function AgendaScreen({ navigation }) {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* 4. O Calendário Simples (Parte de Cima) */}
       <Calendar
         current={today}
         onDayPress={(day) => setSelectedDate(day.dateString)}
@@ -82,27 +140,32 @@ export default function AgendaScreen({ navigation }) {
         }}
       />
 
-      {/* 5. A Lista de Eventos (Parte de Baixo) */}
       <View style={styles.listContainer}>
         <Text style={styles.listHeader}>Compromissos do dia</Text>
-        <FlatList
-          data={eventsForSelectedDay}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <Card style={styles.itemCard}>
-              <Text style={styles.itemTitle}>{item.title}</Text>
-              <View style={styles.itemDetailRow}>
-                <Icon name="clock-outline" size={16} color="#6B7280" />
-                <Text style={styles.itemText}>{item.time}</Text>
+        {loading ? (
+          <ActivityIndicator size="large" style={{ marginTop: 40 }}/>
+        ) : (
+          <FlatList
+            data={eventsForSelectedDay}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <Card style={styles.itemCard}>
+                <Text style={styles.itemTitle}>{item.title}</Text>
+                {item.location && (
+                  <View style={styles.itemDetailRow}>
+                    <Icon name="map-marker-outline" size={16} color="#6B7280" />
+                    <Text style={styles.itemText}>{item.location}</Text>
+                  </View>
+                )}
+              </Card>
+            )}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Nenhum compromisso para este dia.</Text>
               </View>
-            </Card>
-          )}
-          ListEmptyComponent={() => (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Nenhum compromisso para este dia.</Text>
-            </View>
-          )}
-        />
+            )}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -111,18 +174,27 @@ export default function AgendaScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB', backgroundColor: 'white', ...Platform.select({ ios: { paddingBottom: 12 }, android: { paddingTop: 20, paddingBottom: 15 } }),
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB', 
+    backgroundColor: 'white', 
+    ...Platform.select({ 
+      ios: { paddingBottom: 12 }, 
+      android: { paddingTop: 20, paddingBottom: 15 }
+    }),
   },
   headerTitle: { fontSize: 18, fontWeight: '600' },
   iconButton: { padding: 8, marginLeft: -8 },
-  // Estilos da lista
   listContainer: { flex: 1, marginTop: 16, paddingHorizontal: 16 },
-  listHeader: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: '#1F2937' },
+  listHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: '#1F2937' },
   itemCard: { padding: 16, marginBottom: 12, backgroundColor: 'white' },
   itemTitle: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 8 },
-  itemDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  itemDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   itemText: { fontSize: 14, color: '#374151' },
   emptyContainer: { alignItems: 'center', marginTop: 40 },
-  emptyText: { color: '#6B7280' },
+  emptyText: { color: '#6B7280', fontSize: 15 },
 });
+

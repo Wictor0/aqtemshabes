@@ -5,7 +5,6 @@ import Icon from '../ui/Icon';
 import { getNotifications, markNotificationAsRead } from '../../services/api';
 import { toast } from '../../hooks/use-toast';
 
-// Função para formatar o tempo (ex: "5m atrás")
 const timeAgo = (dateString) => {
   const date = new Date(dateString);
   const seconds = Math.floor((new Date() - date) / 1000);
@@ -28,13 +27,22 @@ const NotificationItem = ({ item, onMarkAsRead }) => {
     color: item.is_read ? '#6B7280' : '#4F46E5',
   };
 
+  // Pega dados extras do match/event para enriquecer a UI
+  const eventTitle = item.match?.event?.title;
+  const status = item.match?.status;
+
   return (
     <TouchableOpacity onPress={() => !item.is_read && onMarkAsRead(item.id)}>
       <View style={[styles.itemContainer, !item.is_read && styles.unread]}>
         <Icon name={icon.name} size={24} color={icon.color} style={styles.itemIcon} />
         <View style={styles.itemTextContainer}>
-          <Text style={styles.itemTitle}>{item.title}</Text>
-          <Text style={styles.itemDescription}>{item.message}</Text>
+          <Text style={styles.itemTitle}>
+            {eventTitle ? `Evento: ${eventTitle}` : 'Notificação'}
+          </Text>
+          <Text style={styles.itemDescription}>
+            {item.message}
+            {status ? ` (status: ${status})` : ''}
+          </Text>
           <Text style={styles.itemTime}>{timeAgo(item.created_at)}</Text>
         </View>
       </View>
@@ -46,7 +54,6 @@ export default function NotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Função para buscar as notificações da API
   const fetchNotifications = useCallback(async () => {
     try {
       const response = await getNotifications();
@@ -59,7 +66,6 @@ export default function NotificationsScreen({ navigation }) {
     }
   }, []);
 
-  // Busca as notificações sempre que o ecrã é focado
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -68,17 +74,14 @@ export default function NotificationsScreen({ navigation }) {
   );
 
   const handleMarkAsRead = async (notificationId) => {
-    // Atualiza o estado visualmente de forma otimista
-    setNotifications(prev => 
+    setNotifications(prev =>
       prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
     );
     try {
-      // Envia o pedido para a API em segundo plano
       await markNotificationAsRead(notificationId);
     } catch (error) {
       console.error("Erro ao marcar notificação como lida:", error);
-      // Se der erro, reverte a alteração visual
-      setNotifications(prev => 
+      setNotifications(prev =>
         prev.map(n => n.id === notificationId ? { ...n, is_read: false } : n)
       );
       toast({ type: 'error', title: 'Erro ao atualizar notificação.' });
@@ -94,7 +97,7 @@ export default function NotificationsScreen({ navigation }) {
         <Text style={styles.headerTitle}>Notificações</Text>
         <View style={{ width: 44 }} />
       </View>
-      
+
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
@@ -102,14 +105,16 @@ export default function NotificationsScreen({ navigation }) {
       ) : (
         <FlatList
           data={notifications}
-          renderItem={({ item }) => <NotificationItem item={item} onMarkAsRead={handleMarkAsRead} />}
+          renderItem={({ item }) => (
+            <NotificationItem item={item} onMarkAsRead={handleMarkAsRead} />
+          )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContainer}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={() => (
             <View style={styles.emptyContainer}>
-                <Icon name="bell-off-outline" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyText}>Você não tem nenhuma notificação.</Text>
+              <Icon name="bell-off-outline" size={64} color="#D1D5DB" />
+              <Text style={styles.emptyText}>Você não tem nenhuma notificação.</Text>
             </View>
           )}
         />
@@ -167,4 +172,3 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
 });
-

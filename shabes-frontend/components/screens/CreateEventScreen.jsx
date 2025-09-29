@@ -73,6 +73,7 @@ export default function CreateEventScreen({ navigation }) {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
+    create_by: user.id, // Define o anfitrião como o usuário logado
     date: new Date(),
     fullAddress: "",
     approximateAddress: "",

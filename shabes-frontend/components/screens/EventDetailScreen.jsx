@@ -24,8 +24,24 @@ import { getEventById, createMatch } from "../../services/api";
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
 
+// Mapas de Tradução
+const hostAgeGroupLabels = {
+  families: "Família",
+  "young-adults": "Jovens (20-35)",
+  adults: "Adultos (35+)",
+  seniors: "Seniores (60+)",
+};
+
+const targetAudienceLabels = {
+  any: "Qualquer pessoa",
+  families: "Apenas Famílias",
+  "young-adults": "Apenas Jovens",
+  seniors: "Apenas Seniores",
+};
+
+const getLabel = (value, labels) => labels[value] || value;
+
 export default function EventDetailScreen({ route, navigation }) {
-  // 1. Recebe o novo parâmetro 'origin'
   const { eventId, origin } = route.params;
   const { user } = useAuth();
 
@@ -39,7 +55,15 @@ export default function EventDetailScreen({ route, navigation }) {
     const fetchEvent = async () => {
       try {
         const response = await getEventById(eventId);
-        setEvent(response.data);
+
+        // ✅ Normaliza para garantir que usamos o objeto certo
+        const normalizedEvent =
+          response.data?.data && typeof response.data.data === "object"
+            ? response.data.data
+            : response.data;
+
+        console.log("📌 EVENTO RECEBIDO:", normalizedEvent);
+        setEvent(normalizedEvent);
       } catch (error) {
         console.error("Erro ao buscar detalhes do evento:", error);
         toast({ type: "error", title: "Não foi possível carregar o evento." });
@@ -74,11 +98,23 @@ export default function EventDetailScreen({ route, navigation }) {
     } catch (error) {
       console.error("Erro ao enviar interesse:", error);
       if (error.response?.status === 409) {
-          toast({ type: "error", title: "Pedido já enviado", description: "Você já demonstrou interesse neste evento." });
+        toast({
+          type: "error",
+          title: "Pedido já enviado",
+          description: "Você já demonstrou interesse neste evento.",
+        });
       } else if (error.response?.status === 403) {
-          toast({ type: "error", title: "Ação não permitida", description: "Você não pode se inscrever no seu próprio evento." });
+        toast({
+          type: "error",
+          title: "Ação não permitida",
+          description: "Você não pode se inscrever no seu próprio evento.",
+        });
       } else {
-          toast({ type: "error", title: "Erro ao enviar pedido", description: "Tente novamente mais tarde." });
+        toast({
+          type: "error",
+          title: "Erro ao enviar pedido",
+          description: "Tente novamente mais tarde.",
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -102,11 +138,11 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   }
 
+  // ✅ Verifica se usuário logado é o anfitrião
   const isUserHost = user?.id === event.host_id;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* --- CABEÇALHO RESTAURADO --- */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.iconButton}
@@ -123,38 +159,61 @@ export default function EventDetailScreen({ route, navigation }) {
           <Card style={{ width: "100%" }}>
             <CardHeader>
               <CardTitle style={styles.eventTitle}>{event.title}</CardTitle>
-              <CardDescription>Anfitrião: {event.host?.full_name || 'Desconhecido'}</CardDescription>
+              <CardDescription>
+                Anfitrião / Criador: {event.host_name || "Desconhecido"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Text style={styles.description}>{event.description}</Text>
               <View style={styles.detailsGrid}>
                 <View style={styles.detailItem}>
-                  <Icon name="calendar-month-outline" color="#4F46E5" size={20} />
+                  <Icon
+                    name="calendar-month-outline"
+                    color="#4F46E5"
+                    size={20}
+                  />
                   <Text>{formatShabbatDate(new Date(event.date))}</Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <Icon name="map-marker-outline" color="#EC4899" size={20} />
+                  <Icon
+                    name="map-marker-outline"
+                    color="#EC4899"
+                    size={20}
+                  />
                   <Text>{event.approximate_address}</Text>
                 </View>
                 <View style={styles.detailItem}>
-                  <Icon name="account-group-outline" color="#10B981" size={20} />
-                  <Text>
-                    Até {event.max_guests} convidados
-                  </Text>
+                  <Icon
+                    name="account-group-outline"
+                    color="#10B981"
+                    size={20}
+                  />
+                  <Text>Até {event.max_guests} convidados</Text>
                 </View>
               </View>
               <View style={styles.tagsContainer}>
-                {event.host_age_group && <Badge variant="outline">Anfitriões: {event.host_age_group}</Badge>}
-                {event.target_audience && <Badge variant="outline">Público: {event.target_audience}</Badge>}
+                {event.host_age_group && (
+                  <Badge variant="outline">
+                    Anfitriões:{" "}
+                    {getLabel(event.host_age_group, hostAgeGroupLabels)}
+                  </Badge>
+                )}
+                {event.target_audience && (
+                  <Badge variant="outline">
+                    Público:{" "}
+                    {getLabel(event.target_audience, targetAudienceLabels)}
+                  </Badge>
+                )}
                 {event.languages?.map((lang) => (
-                  <Badge key={lang} variant="outline">{lang}</Badge>
+                  <Badge key={lang} variant="outline">
+                    {lang}
+                  </Badge>
                 ))}
               </View>
             </CardContent>
           </Card>
 
-          {/* O contentor "Interessado?" continua condicional */}
-          {!isUserHost && origin !== 'home' && (
+          {!isUserHost && origin !== "home" && (
             <>
               {showInterestForm ? (
                 <Card style={{ width: "100%" }}>
@@ -180,7 +239,11 @@ export default function EventDetailScreen({ route, navigation }) {
                         onPress={handleExpressInterest}
                         disabled={isSubmitting}
                       >
-                        {isSubmitting ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Enviar"}
+                        {isSubmitting ? (
+                          <LoadingSpinner size="small" color="#FFFFFF" />
+                        ) : (
+                          "Enviar"
+                        )}
                       </Button>
                     </View>
                   </CardContent>
@@ -204,7 +267,6 @@ export default function EventDetailScreen({ route, navigation }) {
               )}
             </>
           )}
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -213,7 +275,6 @@ export default function EventDetailScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
-  // --- ESTILOS DO CABEÇALHO CORRIGIDOS ---
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -222,15 +283,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
-    // Espaçamento específico para cada plataforma
     ...Platform.select({
-      ios: { paddingTop: 50, paddingBottom: 12 },
+      ios: { paddingTop: 0, paddingBottom: 12 },
       android: { paddingTop: 40, paddingBottom: 12 },
     }),
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
   iconButton: { padding: 8 },
-  
   container: {
     padding: 16,
     alignItems: "center",
@@ -260,4 +319,3 @@ const styles = StyleSheet.create({
   },
   actionsContainer: { flexDirection: "row", gap: 12, marginTop: 16 },
 });
-

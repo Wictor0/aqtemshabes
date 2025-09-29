@@ -1,8 +1,8 @@
-// File: C:\Users\dyego\Documents\aqtemshabes-0925\shabes-backend\app\api\matches\route.js
-import * as entry from '../../../../../app/api/matches/route.js'
+// File: C:\Users\dyego\Documents\aqtemshabes-0925\shabes-backend\app\api\matches\[matchId]\route.js
+import * as entry from '../../../../../../app/api/matches/[matchId]/route.js'
 import type { NextRequest } from 'next/server.js'
 
-type TEntry = typeof import('../../../../../app/api/matches/route.js')
+type TEntry = typeof import('../../../../../../app/api/matches/[matchId]/route.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{

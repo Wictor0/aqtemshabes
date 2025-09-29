@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
     ...Platform.select({
-      ios: { paddingTop: 50, paddingBottom: 12 },
+      ios: { paddingTop: 60, paddingBottom: 12 },
       android: { paddingTop: 40, paddingBottom: 12 },
     }),
   },
@@ -97,12 +97,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -2,
     right: -4,
-    minWidth: 18,
+    Width: 10,
     height: 18,
-    borderRadius: 9,
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
+    padding: 0,
   },
-  notificationText: { color: "white", fontSize: 10, fontWeight: "bold" },
+  notificationText: { color: "white", fontSize: 6, fontWeight: "regular" },
 });
 

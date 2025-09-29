@@ -1,4 +1,4 @@
-// File: C:\Users\dyego\Documents\aqtemshabes-shabes-dyego-branch\shabes-backend\app\api\events\route.js
+// File: C:\Users\dyego\Documents\aqtemshabes-0925\shabes-backend\app\api\events\route.js
 import * as entry from '../../../../../app/api/events/route.js'
 import type { NextRequest } from 'next/server.js'
 

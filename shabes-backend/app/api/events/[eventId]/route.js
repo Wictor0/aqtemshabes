@@ -6,12 +6,12 @@ export async function GET(request, { params }) {
   const { eventId } = params;
   const supabase = createRouteHandlerClient({ cookies });
 
-  // Busca todos os detalhes do evento, incluindo o nome do anfitrião
+  // MODIFICAÇÃO: Relação explícita para o anfitrião
   const { data, error } = await supabase
     .from('events')
     .select(`
       *,
-      host:profiles (full_name)
+      host:profiles!events_host_id_fkey(id, full_name)
     `)
     .eq('id', eventId)
     .single();

@@ -6,14 +6,13 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
-  Image,
   RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { useAuth } from "../../context/AuthContext";
-import { getMatchesForGuest, getMatchesForHost, updateMatchStatus } from "../../services/api"; 
+import { getMatchesForGuest, getMatchesForHost, updateMatchStatus } from "../../services/api";
 import { toast } from "../../hooks/use-toast";
 import { Card, CardContent } from "../ui/Card";
 import MatchCard from "../cards/MatchCard";
@@ -21,7 +20,6 @@ import Icon from "../ui/Icon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/Tabs";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import { formatShabbatDate } from "../../lib/utils";
-import { Badge } from "../ui/Badge";
 
 const StatCard = ({ count, label }) => (
   <Card style={styles.statCard}>
@@ -49,23 +47,24 @@ export default function HomeScreen({ navigation }) {
   const nextShabbat = new Date();
 
   const fetchMatches = useCallback(async () => {
-    if (user?.id) {
-      try {
-        const [guestResponse, hostResponse] = await Promise.all([
-          getMatchesForGuest(user.id),
-          getMatchesForHost(user.id)
-        ]);
-        setUserMatches(guestResponse.data || []);
-        setHostMatches(hostResponse.data || []);
-      } catch (error) {
-        console.error("Erro ao buscar matches na HomeScreen:", error);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      setLoading(false);
+    if (!user?.id) {
       setUserMatches([]);
       setHostMatches([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [guestResponse, hostResponse] = await Promise.all([
+        getMatchesForGuest(user.id),
+        getMatchesForHost(user.id)
+      ]);
+      setUserMatches(guestResponse.data || []);
+      setHostMatches(hostResponse.data || []);
+    } catch (error) {
+      console.error("Erro ao buscar matches na HomeScreen:", error);
+    } finally {
+      setLoading(false);
     }
   }, [user?.id]);
 
@@ -74,21 +73,25 @@ export default function HomeScreen({ navigation }) {
       fetchMatches();
     }, [fetchMatches])
   );
-  
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchMatches();
     setRefreshing(false);
   }, [fetchMatches]);
 
-
+  // --- LÓGICA DE ATUALIZAÇÃO CORRIGIDA E ROBUSTA ---
   const handleUpdateMatch = async (matchId, status) => {
     try {
+      // 1. Envia o pedido para a API e espera pela confirmação
       await updateMatchStatus(matchId, status);
-      fetchMatches(); 
+      
+      // 2. Apenas após o sucesso, busca a lista de dados mais recente
+      await fetchMatches();
+
       toast({
         type: "success",
-        title: `Pedido ${status === 'accepted' ? 'aceite' : 'recusado'} com sucesso!`,
+        title: `Pedido ${status === "accepted" ? "aceite" : "recusado"} com sucesso!`,
       });
     } catch (error) {
       console.error(`Erro ao ${status} o match:`, error);
@@ -108,11 +111,9 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.contentWrapper}>
           <TouchableOpacity onPress={() => navigation.navigate("Agenda")}>
@@ -148,16 +149,16 @@ export default function HomeScreen({ navigation }) {
               <TabsContent value="guest">
                 <View style={styles.statsGrid}>
                   <StatCard count={guestCounts.pending} label="Pendentes" />
-                  <StatCard count={guestCounts.accepted} label="Aceites" />
+                  <StatCard count={guestCounts.accepted} label="Aceitos" />
                 </View>
                 {userMatches.length > 0 ? (
                   userMatches.map((match) => (
                     <TouchableOpacity
                       key={match.id}
                       onPress={() =>
-                        navigation.navigate("EventDetail", { 
+                        navigation.navigate("EventDetail", {
                           eventId: match.event.id,
-                          origin: 'home' // Adicionado parâmetro de origem
+                          origin: "home",
                         })
                       }
                     >
@@ -172,29 +173,29 @@ export default function HomeScreen({ navigation }) {
               <TabsContent value="host">
                 <View style={styles.statsGrid}>
                   <StatCard count={hostCounts.pending} label="Pendentes" />
-                  <StatCard count={hostCounts.accepted} label="Aceites" />
+                  <StatCard count={hostCounts.accepted} label="Aceitos" />
                 </View>
                 {hostMatches.length > 0 ? (
                   hostMatches.map((match) => (
                     <TouchableOpacity
                       key={match.id}
                       onPress={() =>
-                        navigation.navigate("EventDetail", { 
+                        navigation.navigate("EventDetail", {
                           eventId: match.event.id,
-                          origin: 'home' // Adicionado parâmetro de origem
+                          origin: "home",
                         })
                       }
                     >
-                      <MatchCard 
-                        match={match} 
+                      <MatchCard
+                        match={match}
                         isHost={true}
-                        onAccept={() => handleUpdateMatch(match.id, 'accepted')}
-                        onDecline={() => handleUpdateMatch(match.id, 'declined')}
+                        onAccept={() => handleUpdateMatch(match.id, "accepted")}
+                        onDecline={() => handleUpdateMatch(match.id, "declined")}
                       />
                     </TouchableOpacity>
                   ))
                 ) : (
-                   <EmptyListComponent message="Você ainda não recebeu nenhum pedido de participação." />
+                  <EmptyListComponent message="Você ainda não recebeu nenhum pedido de participação." />
                 )}
               </TabsContent>
             </Tabs>
@@ -246,16 +247,16 @@ const styles = StyleSheet.create({
   statCount: { fontSize: 24, fontWeight: "bold" },
   statLabel: { fontSize: 12, color: "#6B7280" },
   emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 32,
     marginTop: 20,
   },
   emptyText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#4B5563',
-    textAlign: 'center',
+    fontWeight: "600",
+    color: "#4B5563",
+    textAlign: "center",
     marginTop: 16,
   },
 });

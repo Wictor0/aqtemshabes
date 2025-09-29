@@ -44,7 +44,7 @@ export async function POST(request) {
   }
 }
 
-// --- FUNÇÃO GET FINAL E OTIMIZADA ---
+// --- FUNÇÃO GET FINAL E CORRIGIDA ---
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -72,13 +72,12 @@ export async function GET(request) {
       id, status, personal_message, created_at,
       guest:profiles!matches_guest_id_fkey(id, full_name),
       event:events!matches_event_id_fkey(
-        id, title, date,
+        id, title, date, approximate_address,
         host:profiles!events_host_id_fkey(id, full_name)
       )
     `;
 
     if (hostId) {
-      // Etapa 1: Encontra os eventos do anfitrião
       const { data: events, error: eventsError } = await supabase
         .from('events')
         .select('id')
@@ -92,7 +91,6 @@ export async function GET(request) {
         return NextResponse.json([]);
       }
 
-      // Etapa 2: Busca os matches para esses eventos, com todos os nomes
       const { data, error } = await supabase
         .from('matches')
         .select(baseQuery)
@@ -102,7 +100,6 @@ export async function GET(request) {
       return NextResponse.json(data);
 
     } else {
-      // A consulta para o convidado
       const { data, error } = await supabase
         .from('matches')
         .select(baseQuery)

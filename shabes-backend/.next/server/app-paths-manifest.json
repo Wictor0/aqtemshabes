@@ -1,4 +1,4 @@
 {
-  "/api/events/[eventId]/route": "app/api/events/[eventId]/route.js",
-  "/api/matches/route": "app/api/matches/route.js"
+  "/api/matches/route": "app/api/matches/route.js",
+  "/api/notifications/route": "app/api/notifications/route.js"
 }
