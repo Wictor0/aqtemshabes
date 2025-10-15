@@ -36,24 +36,11 @@ export default function EventCard({
     onInterest?.(event.id);
   };
 
-<<<<<<< HEAD
-=======
-  const getDietaryColor = (dietary) => {
-    switch (dietary) {
-      case 'kosher': return 'bg-blue-100 text-blue-800';
-      case 'vegetarian': return 'bg-green-100 text-green-800';
-      case 'traditional': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
   const getAgeGroupLabel = (ageGroup) => {
     switch (ageGroup) {
-      case 'families': return 'Famílias';
       case 'young-adults': return 'Jovens';
+      case 'adults': return 'Adultos';
       case 'seniors': return 'Seniores';
-      case 'mixed': return 'Misto';
       default: return 'Misto';
     }
   };
@@ -126,15 +113,6 @@ export default function EventCard({
 
         {/* Tags */}
         <div className="flex flex-wrap gap-2">
-<<<<<<< HEAD
-=======
-          <Badge className={getDietaryColor(event.dietary)}>
-            <Utensils className="h-3 w-3 mr-1" />
-            {event.dietary === 'kosher' ? 'Kosher' : 
-             event.dietary === 'vegetarian' ? 'Vegetariano' : 
-             event.dietary === 'traditional' ? 'Tradicional' : 'Qualquer'}
-          </Badge>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
           
           <Badge variant="outline">
             {getAgeGroupLabel(event.ageGroup)}

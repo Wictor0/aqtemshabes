@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Text } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Switch } from "react-native";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Label } from "../ui/Label";
@@ -41,6 +41,7 @@ const dietaryOptions = [
 
 export default function SignUpForm({ onSubmit, isLoading, onBack }) {
   const [step, setStep] = useState(1);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -188,23 +189,26 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
               />
             </View>
             <View style={styles.formSection}>
-              <Label>Preferência Alimentar</Label>
-              <Select
-                options={dietaryOptions}
-                selectedValue={formData.dietary}
-                onValueChange={(v) => handleInputChange("dietary", v)}
-              />
-            </View>
-            <View style={styles.formSection}>
               <Label>Observações</Label>
               <Textarea
                 value={formData.notes}
                 onChangeText={(v) => handleInputChange("notes", v)}
               />
             </View>
+            <Switch
+                  trackColor={{ false: "#E5E7EB", true: "#81b0ff" }}
+                  thumbColor={agreedToTerms ? "#4F46E5" : "#f4f3f4"}
+                  ios_backgroundColor="#E5E7EB"
+                  onValueChange={setAgreedToTerms}
+                  value={agreedToTerms}
+                />
+                <Text style={styles.consentText}>
+                  Eu li e concordo com os termos de segurança e responsabilidade
+                  da comunidade.
+                </Text>
             <Button
               onPress={handleFinalSubmit}
-              disabled={isLoading}
+              disabled={isLoading || !agreedToTerms}
               style={{ marginTop: 16 }}
             >
               {isLoading ? (

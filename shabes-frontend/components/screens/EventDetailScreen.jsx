@@ -26,17 +26,16 @@ import { formatShabbatDate } from "../../lib/utils";
 
 // Mapas de Tradução
 const hostAgeGroupLabels = {
-  families: "Família",
-  "young-adults": "Jovens (20-35)",
+  "young-adults": "Jovens (18-35)",
   adults: "Adultos (35+)",
   seniors: "Seniores (60+)",
 };
 
 const targetAudienceLabels = {
   any: "Qualquer pessoa",
-  families: "Apenas Famílias",
-  "young-adults": "Apenas Jovens",
-  seniors: "Apenas Seniores",
+  families: "Famílias",
+  "young-adults": "Jovens",
+  seniors: "Seniores",
 };
 
 const getLabel = (value, labels) => labels[value] || value;

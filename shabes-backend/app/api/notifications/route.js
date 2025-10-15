@@ -19,43 +19,31 @@ export async function GET(request) {
     return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
   }
 
-  // --- Busca notificações + informações do match e evento ---
+  // --- [ALTERAÇÃO PARA DEPURAÇÃO] ---
+  // A consulta complexa foi substituída por uma consulta simples.
+  // Estamos a buscar apenas os dados da tabela 'notifications' para isolar o problema.
+  console.log(`Buscando notificações simples para o usuário: ${user.id}`);
   const { data, error } = await supabase
     .from('notifications')
-    .select(`
-      id,
-      title,
-      message,
-      is_read,
-      created_at,
-      match:matches(
-        id,
-        status,
-        event:events(
-          id,
-          title,
-          date,
-          host_id,
-          host:profiles!events_host_id_fkey(
-            id,
-            full_name
-          )
-        )
-      )
-    `)
+    .select('*') // Busca todas as colunas da tabela 'notifications'
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error("Erro ao buscar notificações:", error);
+    console.error("Erro ao buscar notificações (query simples):", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Adicionado log para ver o que a query simples retorna
+  console.log("Dados retornados pela query simples:", data);
 
   return NextResponse.json(data);
 }
 
+
 // ======================
 // PATCH /api/notifications
+// (Sem alterações)
 // ======================
 export async function PATCH(request) {
   const { notificationId } = await request.json();

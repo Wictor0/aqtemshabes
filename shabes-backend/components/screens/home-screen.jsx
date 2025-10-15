@@ -91,7 +91,7 @@ export default function HomeScreen() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold">Próximo Shabat</h2>
+                <h2 className="text-lg font-semibold">Agenda de Shabat</h2>
                 <p className="text-blue-100">{formatShabbatDate(nextShabbat)}</p>
               </div>
               <Calendar className="h-8 w-8 text-blue-200" />

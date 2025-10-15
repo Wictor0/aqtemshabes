@@ -15,8 +15,7 @@ import Icon from "../ui/Icon";
  * Mapas para exibir labels amigáveis em português
  */
 const hostAgeGroupLabels = {
-  families: "Família",
-  "young-adults": "Jovens (20-35)",
+  "young-adults": "Jovens (18-35)",
   adults: "Adultos (35+)",
   seniors: "Seniores (60+)",
   mixed: "Misto",
@@ -24,9 +23,9 @@ const hostAgeGroupLabels = {
 
 const targetAudienceLabels = {
   any: "Qualquer pessoa",
-  families: "Apenas Famílias",
-  "young-adults": "Apenas Jovens",
-  seniors: "Apenas Seniores",
+  families: "Famílias",
+  "young-adults": "Jovens",
+  seniors: "Seniores",
 };
 
 /**

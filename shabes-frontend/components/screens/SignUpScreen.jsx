@@ -21,6 +21,7 @@ export default function SignUpScreen({ route, navigation }) {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
+          
           <ScrollView contentContainerStyle={styles.container}>
             <SignUpForm
               inviteCode={inviteCode}

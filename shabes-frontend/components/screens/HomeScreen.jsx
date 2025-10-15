@@ -122,7 +122,7 @@ export default function HomeScreen({ navigation }) {
               style={styles.shabbatCard}
             >
               <View>
-                <Text style={styles.shabbatTitle}>Próximo Shabat</Text>
+                <Text style={styles.shabbatTitle}>Agenda</Text>
                 <Text style={styles.shabbatDate}>
                   {formatShabbatDate(nextShabbat)}
                 </Text>

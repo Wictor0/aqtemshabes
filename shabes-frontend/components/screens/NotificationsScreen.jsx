@@ -108,7 +108,7 @@ export default function NotificationsScreen({ navigation }) {
           renderItem={({ item }) => (
             <NotificationItem item={item} onMarkAsRead={handleMarkAsRead} />
           )}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.listContainer}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={() => (
@@ -172,3 +172,4 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
 });
+
