@@ -10,6 +10,8 @@ import {
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import Icon from "../ui/Icon";
+// 👇 Importar o componente de Selo
+import VerifiedBadge from "../ui/VerifiedBadge";
 
 /**
  * Mapas para exibir labels amigáveis em português
@@ -19,40 +21,30 @@ const hostAgeGroupLabels = {
   adults: "Adultos (35+)",
   seniors: "Seniores (60+)",
   mixed: "Misto",
+  "Young Adults": "Jovens (18-35)",
+  "Adults": "Adultos (35+)",
+  "Seniors": "Seniores (60+)",
 };
 
 const targetAudienceLabels = {
-  any: "Qualquer pessoa",
-  families: "Famílias",
+  "any": "Qualquer pessoa",
+  "families": "Famílias",
   "young-adults": "Jovens",
-  seniors: "Seniores",
+  "adults": "Adultos",
+  "seniors": "Seniores",
+  "Any": "Qualquer pessoa",
+  "Families": "Famílias",
+  "Young Adults": "Jovens",
+  "Seniors": "Seniores",
+  "Mixed": "Misto",
 };
 
-/**
- * Formatação manual em pt-BR (não usa Intl para evitar engines que não respeitam locale)
- */
 const WEEKDAYS_PT = [
-  "Domingo",
-  "Segunda-feira",
-  "Terça-feira",
-  "Quarta-feira",
-  "Quinta-feira",
-  "Sexta-feira",
-  "Sábado",
+  "Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado",
 ];
 const MONTHS_PT = [
-  "Janeiro",
-  "Fevereiro",
-  "Março",
-  "Abril",
-  "Maio",
-  "Junho",
-  "Julho",
-  "Agosto",
-  "Setembro",
-  "Outubro",
-  "Novembro",
-  "Dezembro",
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
 function formatDateLongPT(dateString) {
@@ -65,23 +57,14 @@ function formatDateLongPT(dateString) {
   return `${wd}, ${day} de ${month}`;
 }
 
-function formatTimePT(dateString) {
-  if (!dateString) return "";
-  const d = new Date(dateString);
-  if (isNaN(d.getTime())) return "";
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
 export default function EventCard({
   event,
   onInterest,
-  showDistance = false,
-  distance,
   matchScore,
 }) {
   const [isInterested, setIsInterested] = useState(false);
+  
+  // Verificação de segurança: Se não tem evento, não renderiza nada
   if (!event) return null;
 
   const handleInterest = () => {
@@ -89,7 +72,6 @@ export default function EventCard({
     onInterest?.(event.id);
   };
 
-  // spotsLeft — compatível com nomes do banco
   const spotsLeft =
     typeof event.max_guests === "number"
       ? (typeof event.current_guests === "number"
@@ -97,20 +79,35 @@ export default function EventCard({
           : event.max_guests)
       : 0;
 
-  const ageLabel = hostAgeGroupLabels[event.host_age_group] ?? event.host_age_group;
-  const audienceLabel = targetAudienceLabels[event.target_audience] ?? event.target_audience;
+  const ageLabel = hostAgeGroupLabels[event.host_age_group] || event.host_age_group;
+  const audienceLabel = targetAudienceLabels[event.target_audience] || event.target_audience;
+
+  // 👇 LÓGICA DE BLIND: Na tela de descobrir, sempre ocultamos o nome do anfitrião
+  // O usuário ainda não foi aceito, então vê apenas "Anfitrião da Comunidade"
+  // const hostDisplayName = event.host?.username || event.host?.full_name; // REMOVIDO
+  const hostDisplayName = "Anfitrião da Comunidade";
+  
+  // Não mostramos o selo de verificado específico do usuário, pois não sabemos quem é.
+  // Mas podemos mostrar um selo genérico ou ocultar. Vamos ocultar por enquanto para manter o mistério.
+  const hostRole = null; 
 
   return (
     <Card style={[styles.card, { borderLeftColor: "#3B82F6" }]}>
       <CardHeader style={{ paddingBottom: 8 }}>
         <View style={styles.headerContainer}>
-          <View style={{ flex: 1 }}>
-            <CardTitle style={styles.cardTitle}>{event.title}</CardTitle>
-            {event.host?.full_name ? (
-              <CardDescription>Por {event.host.full_name}</CardDescription>
-            ) : (
-              <CardDescription>Por Desconhecido</CardDescription>
-            )}
+          <View style={{ flex: 1, paddingRight: 8 }}> 
+            <CardTitle style={styles.cardTitle} numberOfLines={2}>{event.title}</CardTitle>
+            
+            {/* 👇 LINHA DO ANFITRIÃO (OCULTO) */}
+            <View style={styles.hostRow}>
+                <View style={styles.hostNameContainer}>
+                    <CardDescription numberOfLines={1}>
+                        Por {hostDisplayName}
+                    </CardDescription>
+                </View>
+                {/* Ocultamos o selo de verificado específico aqui */}
+            </View>
+            
           </View>
 
           {typeof matchScore === "number" && (
@@ -126,18 +123,15 @@ export default function EventCard({
 
       <CardContent>
         <View style={styles.infoSection}>
-          {/* Data + Hora (formatadas em pt-BR manualmente) */}
           {event.date && (
             <View style={styles.infoRow}>
               <Icon name="calendar-month-outline" size={16} color="#6B7280" />
               <Text style={styles.infoText}>
                 {formatDateLongPT(event.date)}
-                {event.date ? ` • ${formatTimePT(event.date)}` : ""}
               </Text>
             </View>
           )}
 
-          {/* Localização */}
           <View style={styles.infoRow}>
             <Icon name="map-marker-outline" size={16} color="#6B7280" />
             <Text style={styles.infoText}>
@@ -145,7 +139,6 @@ export default function EventCard({
             </Text>
           </View>
 
-          {/* Capacidade */}
           {typeof event.max_guests === "number" && (
             <View style={styles.infoRow}>
               <Icon name="account-group-outline" size={16} />
@@ -161,14 +154,12 @@ export default function EventCard({
           )}
         </View>
 
-        {/* Descrição curta */}
         {event.description && (
           <Text style={styles.descriptionText} numberOfLines={2}>
             {event.description}
           </Text>
         )}
 
-        {/* Tags: mostrar Label legível para faixa etária / público e os idiomas */}
         <View style={styles.tagsContainer}>
           {ageLabel && <Badge variant="outline">{ageLabel}</Badge>}
           {audienceLabel && <Badge variant="outline">{audienceLabel}</Badge>}
@@ -180,7 +171,6 @@ export default function EventCard({
             ))}
         </View>
 
-        {/* Botão de interesse */}
         {onInterest && (
           <View style={styles.actionsContainer}>
             <Button
@@ -210,6 +200,14 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   cardTitle: { fontSize: 18, lineHeight: 22 },
+  hostRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  hostNameContainer: {
+    flexShrink: 1,
+  },
   matchScoreBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -218,6 +216,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     gap: 4,
+    marginLeft: 8,
   },
   matchScoreText: { fontSize: 12, fontWeight: "500", color: "#92400E" },
   infoSection: { gap: 8, marginVertical: 12 },

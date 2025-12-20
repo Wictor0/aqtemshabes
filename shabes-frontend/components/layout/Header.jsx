@@ -34,19 +34,21 @@ export default function Header() {
       fetchPendingCount();
     }, [user])
   );
-
+// Coloque isso antes do return (...)
   return (
     <View style={styles.header}>
       <View style={styles.headerLeft}>
         <Image
-          source={require("../../assets/images/icon.png")}
+          source={require("../../assets/images/LOGO-REDUZIDA.png")}
           style={styles.logo}
         />
         <View>
            <Text style={styles.headerTitle}>Aquitemshabes</Text>
            <Text style={styles.headerSubtitle}>
-             Shalom, {user?.user_metadata?.full_name?.split(" ")[0]}! 👋
-           </Text>
+  Shalom, {
+    (user?.user_metadata?.full_name || user?.user_metadata?.name || "Visitante").split(" ")[0]
+  }! 👋
+</Text>
         </View>
       </View>
       <View style={styles.headerRight}>
@@ -54,19 +56,18 @@ export default function Header() {
           style={styles.iconButton}
           onPress={() => navigation.navigate("Notifications")}
         >
-          <Icon name="bell-outline" size={24} color="#374151" />
+          {/*<Icon name="bell-outline" size={24} color="#374151" />
           {pendingCount > 0 && (
             <Badge style={styles.notificationBadge}>
               <Text style={styles.notificationText}>{pendingCount}</Text>
             </Badge>
-          )}
+          )}*/}
         </TouchableOpacity>
-        {/* 2. O botão agora chama a função signOut e o ícone foi atualizado */}
         <TouchableOpacity 
           style={styles.iconButton}
           onPress={signOut}
         >
-          <Icon name="logout" size={24} color="#EF4444" />
+          <Icon name="logout" size={24} color="#EF4444" /> 
         </TouchableOpacity>
       </View>
     </View>
@@ -88,7 +89,7 @@ const styles = StyleSheet.create({
     }),
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  logo: { width: 40, height: 40, borderRadius: 20 },
+  logo: { width: 29, height: 40, borderRadius: 20 },
   headerTitle: { fontSize: 16, fontWeight: "bold" },
   headerSubtitle: { fontSize: 12, color: "#6B7280" },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },

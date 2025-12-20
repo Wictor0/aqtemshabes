@@ -1,78 +1,107 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 
-// ================= PATCH =================
-export async function PATCH(request) {
-  const supabase = createRouteHandlerClient({ cookies });
+// Força o Next.js a não fazer cache dessa rota
+export const dynamic = 'force-dynamic';
 
-  // Autenticação
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+// ======================
+// GET /api/profile
+// Busca o perfil do usuário logado
+// ======================
+export async function GET(request) {
+  try {
+    const headersList = headers();
+    const authHeader = headersList.get('authorization');
+
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Cabeçalho de autorização faltando' }, { status: 401 });
+    }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Verifica quem é o usuário
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Token inválido ou expirado' }, { status: 401 });
+    }
+
+    // Busca o perfil desse usuário E seus dependentes/interesses
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select(`
+        *,
+        dependents (*)
+      `)
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+        if (profileError.code === 'PGRST116') {
+            return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 });
+        }
+        throw profileError;
+    }
+
+    // Retorna o perfil
+    return NextResponse.json(profile, {
+        status: 200,
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+        }
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar meu perfil:', error);
+    return NextResponse.json({ error: 'Erro interno no servidor' }, { status: 500 });
   }
-
-  const token = authHeader.split(' ')[1];
-  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !user) {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-  }
-
-  const body = await request.json();
-
-  // 🔧 Filtra apenas os campos permitidos
-  const allowedFields = ['full_name', 'phone', 'avatar_url', 'role'];
-  const filteredBody = Object.fromEntries(
-    Object.entries(body).filter(([key]) => allowedFields.includes(key))
-  );
-
-  console.log("📦 PATCH /profile -> Body filtrado:", filteredBody);
-
-  // Faz o update direto (RLS garante que só o próprio usuário pode alterar)
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(filteredBody)
-    .eq('id', user.id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("❌ PATCH /profile -> Erro ao atualizar o perfil:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  console.log("✅ PATCH /profile -> Perfil atualizado:", data);
-
-  return NextResponse.json(data);
 }
 
-// ================= GET =================
-export async function GET(request) {
-  const supabase = createRouteHandlerClient({ cookies });
+// ======================
+// PATCH /api/profile
+// Atualiza o perfil do usuário logado
+// ======================
+export async function PATCH(request) {
+    try {
+        const body = await request.json();
+        const headersList = headers();
+        const authHeader = headersList.get('authorization');
 
-  const authHeader = request.headers.get('Authorization');
-  if (!authHeader) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-  }
+        if (!authHeader) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  const token = authHeader.split(' ')[1];
-  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !user) {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-  }
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            { global: { headers: { Authorization: authHeader } } }
+        );
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
-  if (error) {
-    console.error("❌ GET /profile -> Erro ao buscar o perfil:", error);
-    return NextResponse.json({ error: error.message, details: error }, { status: 500 });
-  }
+        // Impede que o usuário altere seu próprio status via API por segurança
+        if (body.status) {
+            delete body.status;
+        }
 
-  console.log("✅ GET /profile -> Perfil retornado:", data);
+        const { data, error } = await supabase
+            .from('profiles')
+            .update(body)
+            .eq('id', user.id)
+            .select()
+            .single();
 
-  return NextResponse.json(data);
+        if (error) throw error;
+
+        return NextResponse.json(data);
+    } catch (error) {
+        console.error('Erro ao atualizar perfil:', error);
+        return NextResponse.json({ error: 'Erro ao atualizar' }, { status: 500 });
+    }
 }

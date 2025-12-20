@@ -10,7 +10,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Image,
-  TouchableOpacity, // 👈 importei aqui
+  TouchableOpacity,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -29,11 +29,15 @@ import LoadingSpinner from "../ui/LoadingSpinner";
 import { toast } from "../../hooks/use-toast";
 import { useAuth } from "../../context/AuthContext";
 
+import ViewIcon from "../../assets/icons/ViewIcon";
+import HideIcon from "../../assets/icons/HideIcon";
+
+
 export default function WelcomeScreen({ navigation }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
+  // const [inviteCode, setInviteCode] = useState(""); // 👈 REMOVIDO
   const [isLoading, setIsLoading] = useState(false);
 
   // 👇 estado pra controlar visibilidade da senha
@@ -53,6 +57,8 @@ export default function WelcomeScreen({ navigation }) {
     setIsLoading(false);
   };
 
+  // 👈 FUNÇÃO DE CÓDIGO DE CONVITE REMOVIDA
+  /*
   const handleInviteCode = () => {
     if (!inviteCode.trim()) {
       toast({
@@ -73,6 +79,12 @@ export default function WelcomeScreen({ navigation }) {
       });
     }
   };
+  */
+
+  // 👇 ATUALIZADO: Navega para a tela de Diretrizes antes do cadastro
+  const handleSignUpNavigation = () => {
+    navigation.navigate("Guidelines");
+  };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -92,13 +104,16 @@ export default function WelcomeScreen({ navigation }) {
                   style={styles.logoContainer}
                 >
                   <Image
-                    source={require("../../assets/images/icon.png")}
+                    source={require("../../assets/images/LOGO-REDUZIDA.png")}
                     style={styles.logo}
                   />
                 </LinearGradient>
-                <Text style={styles.title}>Aquitemshabes</Text>
+                <Image
+                  source={require("../../assets/images/SHABES-TEXTO-CORRIDO.png")}
+                  style={{ height: 30, resizeMode: "contain" }}
+                />
                 <Text style={styles.subtitle}>
-                  Conectando comunidades através do Shabat
+                  Quando uma porta se abre, nossa tradição permanece.
                 </Text>
               </View>
               <Card style={{ width: "100%" }}>
@@ -124,16 +139,19 @@ export default function WelcomeScreen({ navigation }) {
                         value={password}
                         onChangeText={setPassword}
                         placeholder="••••••••"
-                        type={showPassword ? "text" : "password"} // 👈 alterna
+                        // 👇 Corrigido: secureTextEntry é a prop correta
+                        secureTextEntry={!showPassword} 
                         style={{ flex: 1 }}
                       />
                       <TouchableOpacity
                         onPress={() => setShowPassword(!showPassword)}
                         style={{ marginLeft: 8 }}
                       >
-                        <Text style={{ fontSize: 16 }}>
-                          {showPassword ? "🙈" : "🐵"}
-                        </Text>
+                        {showPassword ? (
+                          <HideIcon width={22} height={22} color="#6B7280" />
+                        ) : (
+                          <ViewIcon width={22} height={22} color="#6B7280" />
+                        )} 
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -153,33 +171,19 @@ export default function WelcomeScreen({ navigation }) {
                   </Button>
                 </CardFooter>
               </Card>
+              
               <Card style={{ width: "100%" }}>
-                <CardHeader>
-                  <CardTitle>Novo usuário?</CardTitle>
-                  <CardDescription>
-                    Digite seu código de convite para se cadastrar
-                  </CardDescription>
-                </CardHeader>
                 <CardContent>
-                  <View style={styles.formSection}>
-                    <Label>Código de Convite</Label>
-                    <Input
-                      value={inviteCode}
-                      onChangeText={(text) => setInviteCode(text.toUpperCase())}
-                      placeholder="SHALOM2025"
-                      autoCapitalize="characters"
-                    />
-                  </View>
-                </CardContent>
-                <CardFooter>
+                  <CardTitle> Novo usuário?
+                  </CardTitle>
                   <Button
-                    style={{ flex: 1 }}
-                    onPress={handleInviteCode}
+                    style={{ flex: 1 , marginTop: 8}}
+                    onPress={handleSignUpNavigation} // 👈 Chama a navegação atualizada
                     variant="host"
                   >
-                    Continuar Cadastro
+                    Criar Conta
                   </Button>
-                </CardFooter>
+                </CardContent>
               </Card>
             </View>
           </ScrollView>
@@ -218,6 +222,6 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
   },
   title: { fontSize: 32, fontWeight: "bold", color: "#1F2937" },
-  subtitle: { fontSize: 16, color: "#6B7280" },
+  subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center" },
   formSection: { width: "100%", gap: 8, marginBottom: 4 },
 });

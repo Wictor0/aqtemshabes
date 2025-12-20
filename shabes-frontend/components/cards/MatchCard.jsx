@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Image } from "react-native";
 import {
   Card,
   CardContent,
@@ -11,22 +11,29 @@ import { Badge } from "../ui/Badge";
 import Icon from "../ui/Icon";
 import { Button } from "../ui/Button";
 import { formatShabbatDate } from "../../lib/utils";
+import VerifiedBadge from "../ui/VerifiedBadge";
 
-// Status agora em minúsculas para corresponder à base de dados
 const MatchStatus = {
   PENDING: "pending",
   ACCEPTED: "accepted",
   DECLINED: "declined",
 };
 
-// --- Funções de Ajuda ---
-
 const getStatusBadge = (status) => {
   switch (status) {
     case MatchStatus.PENDING:
       return <Badge variant="secondary">Aguardando</Badge>;
     case MatchStatus.ACCEPTED:
-      return <Badge variant="success">Aceito</Badge>;
+      return (
+        <Badge 
+          variant="success" 
+          style={{ backgroundColor: "#22C55E", borderColor: "#22C55E", borderWidth: 1 }}
+        >
+          <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 12 }}>
+            Aceito
+          </Text>
+        </Badge>
+      );
     case MatchStatus.DECLINED:
       return <Badge variant="destructive">Recusado</Badge>;
     default:
@@ -45,37 +52,90 @@ const getStatusColor = (status) => {
   }
 };
 
-// --- Componente Principal ---
-
 export default function MatchCard({
   match,
   isHost = false,
   onAccept,
   onDecline,
 }) {
-  if (!match || !match.event) return null;
+  if (!match || !match.event) return null; 
 
-  const { event, guest, status, personal_message, created_at } = match;
+  const { event, guest, status, personal_message, created_at, dependent_ids } = match;
   const isPending = status === MatchStatus.PENDING;
+  const isAccepted = status === MatchStatus.ACCEPTED;
 
-  // Acessa os nomes de forma segura, com um texto alternativo
-  const guestName = match?.guest?.full_name || "Convidado";
-  const hostName = match?.event?.host?.full_name || "Anfitrião";
   const eventTitle = match?.event?.title || "Evento sem título";
+  const dependentCount = dependent_ids?.length || 0;
+
+  // 👇 LÓGICA DE BLIND BOOKING (OCULTAR NOMES) 👇
+  
+  let avatarUrl = null;
+  let fallbackName = "Usuário";
+  let displayName = "";
+  let displayRole = null;
+  let descriptionText = "";
+
+  if (isHost) {
+    // === VISÃO DO ANFITRIÃO ===
+    // O anfitrião SEMPRE vê quem está pedindo para entrar (Guest)
+    avatarUrl = match?.guest?.avatar_url;
+    fallbackName = match?.guest?.full_name || match?.guest?.username || "Convidado";
+    displayName = match?.guest?.username || match?.guest?.full_name || "Convidado";
+    displayRole = match?.guest?.role; 
+    descriptionText = `enviou um pedido para: "${eventTitle}"`;
+
+  } else {
+    // === VISÃO DO CONVIDADO ===
+    // O convidado só vê o nome do anfitrião SE foi aceito
+    const showHostIdentity = isAccepted;
+
+    if (showHostIdentity) {
+        avatarUrl = match?.event?.host?.avatar_url;
+        fallbackName = match?.event?.host?.full_name || match?.event?.host?.username || "Anfitrião";
+        displayName = match?.event?.host?.username || match?.event?.host?.full_name || "Anfitrião";
+        displayRole = match?.event?.host?.role;
+        descriptionText = `Evento de ${displayName}`;
+    } else {
+        // Se ainda não foi aceito, esconde tudo
+        avatarUrl = null; // Sem foto
+        fallbackName = "Anfitrião"; 
+        displayName = "Evento"; // Título do Card vira o nome do evento
+        displayRole = null; // Sem selo
+        descriptionText = `Anfitrião da Comunidade`;
+    }
+  }
+
+  const finalAvatarUri = avatarUrl || `https://ui-avatars.com/api/?name=${fallbackName.replace(' ', '+')}&background=random`;
 
   return (
     <Card style={[styles.card, { borderLeftColor: getStatusColor(status) }]}>
       <CardHeader>
         <View style={styles.headerContainer}>
+          
+          <Image
+            style={styles.avatar}
+            source={{ uri: finalAvatarUri }}
+          />
+
           <View style={{ flex: 1 }}>
-            <CardTitle style={styles.cardTitle}>
-              {isHost ? guestName : eventTitle}
-            </CardTitle>
-            <CardDescription>
-              {isHost
-                ? `enviou um pedido para: "${eventTitle}"`
-                : `Evento de ${hostName}`}
-            </CardDescription>
+            
+            {/* Título Principal */}
+            <View style={styles.titleRow}>
+                <CardTitle style={styles.cardTitle}>
+                    {/* Se for convidado e pendente, mostra título do evento. Se aceito, mostra anfitrião */}
+                    {!isHost && !isAccepted ? eventTitle : displayName}
+                </CardTitle>
+                {/* Mostra selo apenas se tiver role visível */}
+                {displayRole && <VerifiedBadge role={displayRole} size={16} />}
+            </View>
+            
+            {/* Descrição */}
+            <View style={styles.descRow}>
+                <CardDescription>
+                    {descriptionText}
+                </CardDescription>
+            </View>
+            
           </View>
           <View style={styles.headerRight}>
             {getStatusBadge(status)}
@@ -86,11 +146,20 @@ export default function MatchCard({
       <CardContent>
         <View style={styles.detailsBox}>
           <View style={styles.infoRow}>
-            <Icon name="calendar-month-outline" size={16} />
+            <Icon name="calendar-month-outline" size={16} color="#6B7280" />
             <Text style={styles.infoText}>
               {formatShabbatDate(new Date(event.date))}
             </Text>
           </View>
+          
+          {dependentCount > 0 && (
+            <View style={styles.infoRow}>
+              <Icon name="account-group-outline" size={16} color="#6B7280" />
+              <Text style={styles.infoText}>
+                Leva +{dependentCount} dependente{dependentCount > 1 ? 's' : ''}
+              </Text>
+            </View>
+          )}
         </View>
 
         {personal_message && (
@@ -137,7 +206,25 @@ const styles = StyleSheet.create({
   headerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center", 
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12, 
+    backgroundColor: '#E5E7EB', 
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  descRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
   },
   headerRight: { alignItems: "flex-end", gap: 8 },
   cardTitle: { fontSize: 18, lineHeight: 22 },
@@ -169,4 +256,3 @@ const styles = StyleSheet.create({
   timestamp: { fontSize: 12, color: "#9CA3AF" },
   actionsContainer: { flexDirection: "row", paddingTop: 16, gap: 8 },
 });
-

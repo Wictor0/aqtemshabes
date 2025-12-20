@@ -70,7 +70,7 @@ export function TabsContent({ value, children }) {
 const styles = StyleSheet.create({
   tabsList: {
     flexDirection: "row",
-    height: 40,
+    height: 60,
     borderRadius: 8,
     backgroundColor: "#E5E7EB", // bg-muted
     padding: 4, // p-1

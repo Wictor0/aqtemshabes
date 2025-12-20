@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -25,10 +24,7 @@ export default function SignUpForm({ inviteCode, onBack }) {
     address: '',
     preferredStartTime: '19:00',
     preferredEndTime: '22:00',
-<<<<<<< HEAD
-=======
-    dietary: 'kosher',
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
+    dietary: 'kosher', // 👈 Conflito resolvido aqui
     notes: ''
   });
 
@@ -265,9 +261,8 @@ export default function SignUpForm({ inviteCode, onBack }) {
                   </div>
                 </div>
                 
+                {/* 👇 Conflito resolvido aqui */}
                 <div>
-<<<<<<< HEAD
-=======
                   <Label htmlFor="dietary" className="flex items-center space-x-2">
                     <Utensils className="h-4 w-4" />
                     <span>Preferência Alimentar</span>
@@ -289,7 +284,6 @@ export default function SignUpForm({ inviteCode, onBack }) {
                 </div>
                 
                 <div>
->>>>>>> b760fc628068401f7d3cb8a9a355be2b6e855bab
                   <Label htmlFor="notes">Observações (Opcional)</Label>
                   <Textarea
                     id="notes"
