@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -146,6 +146,27 @@ export default function HomeScreen({ navigation }) {
     accepted: hostMatches.filter((m) => m.status === "accepted").length,
   };
 
+  // 👇 LÓGICA DE ORDENAÇÃO: Pendente > Aceito > Recusado
+  const sortMatches = (matches) => {
+    const statusPriority = { pending: 1, accepted: 2, declined: 3 };
+    return [...matches].sort((a, b) => {
+        const priorityA = statusPriority[a.status] || 4;
+        const priorityB = statusPriority[b.status] || 4;
+        
+        // Se a prioridade for diferente, ordena por status
+        if (priorityA !== priorityB) {
+            return priorityA - priorityB;
+        }
+        
+        // Se for o mesmo status, ordena por data de criação (mais recente primeiro)
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+  };
+
+  // Memoiza as listas ordenadas para evitar re-cálculos desnecessários
+  const sortedUserMatches = useMemo(() => sortMatches(userMatches), [userMatches]);
+  const sortedHostMatches = useMemo(() => sortMatches(hostMatches), [hostMatches]);
+
   const findNextAcceptedEvent = () => {
     const acceptedGuestMatches = userMatches.filter(m => m.status === 'accepted' && m.event);
     const acceptedHostMatches = hostMatches.filter(m => m.status === 'accepted' && m.event);
@@ -273,8 +294,8 @@ export default function HomeScreen({ navigation }) {
               {/* LISTA DE CONTEÚDO */}
               <View style={styles.listContainer}>
                 {activeTab === "guest" ? (
-                  userMatches.length > 0 ? (
-                    userMatches.map((match) => (
+                  sortedUserMatches.length > 0 ? (
+                    sortedUserMatches.map((match) => (
                       match.event && match.event.id && (
                         <TouchableOpacity
                           key={match.id}
@@ -299,9 +320,8 @@ export default function HomeScreen({ navigation }) {
                   )
                 ) : (
                   // Conteúdo da aba ANFITRIÃO (só renderiza se estiver ativa E permitida)
-                  // Nota: A lógica de estado acima já impede activeTab='host' se !hasHostAccess
-                  hostMatches.length > 0 ? (
-                    hostMatches.map((match) => (
+                  sortedHostMatches.length > 0 ? (
+                    sortedHostMatches.map((match) => (
                       match.event && match.event.id && (
                         <TouchableOpacity
                           key={match.id}
@@ -358,10 +378,10 @@ const styles = StyleSheet.create({
   },
   shabbatTitle: { fontSize: 18, fontWeight: "600", color: "white" },
   shabbatDate: { color: "rgba(255,255,255,0.8)" },
-  nextEventDate: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 12,
-    fontWeight: '600',
+  nextEventDate: { 
+    color: "rgba(255,255,255,0.9)", 
+    fontSize: 12, 
+    fontWeight: '600', 
     marginTop: 4,
     fontStyle: 'italic',
   },

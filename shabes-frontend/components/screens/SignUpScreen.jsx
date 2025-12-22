@@ -114,10 +114,8 @@ export default function SignUpScreen({ navigation, route }) {
   const [isLoading, setIsLoading] = useState(false);
   const [avatar, setAvatar] = useState(null);
 
-  // 👇 Estados adicionados de volta
+  // Estados adicionais
   const [dietaryRestrictions, setDietaryRestrictions] = useState("");
-
-  // Estado para a Organização Validadora (Padrão: Qualquer)
   const [validatorOrganization, setValidatorOrganization] = useState("Qualquer");
   
   // Estados para Animação do Accordion de Validação
@@ -144,7 +142,7 @@ export default function SignUpScreen({ navigation, route }) {
 
   const heightInterpolate = animatedHeight.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 220], // Altura aproximada das 4 opções
+    outputRange: [0, 220],
   });
 
   const rotateInterpolate = iconRotation.interpolate({
@@ -198,9 +196,16 @@ export default function SignUpScreen({ navigation, route }) {
   };
 
   const handleSignUp = async () => {
+    // 1. Validação Básica
     if (!email || !password || !fullName || !phoneNumber) {
       Alert.alert('Campos Obrigatórios', 'Por favor, preencha todos os campos.');
       return;
+    }
+
+    // 2. Validação de Senha (Supabase exige min 6 chars)
+    if (password.length < 6) {
+        Alert.alert('Senha Fraca', 'A senha deve ter pelo menos 6 caracteres.');
+        return;
     }
     
     setIsLoading(true);
@@ -217,7 +222,7 @@ export default function SignUpScreen({ navigation, route }) {
         birth_date: birthDate.toISOString().split('T')[0],
         inviteCode: inviteCode,
         validatorOrganization: validatorOrganization,
-        dietary: dietaryRestrictions // 👈 Enviando as restrições alimentares
+        dietaryRestrictions: dietaryRestrictions // 👈 Enviando com o nome correto esperado pelo backend
       });
 
       const { session, user } = response.data;
@@ -262,8 +267,20 @@ export default function SignUpScreen({ navigation, route }) {
         );
       }
     } catch (error) {
-      console.error("Erro no cadastro:", error);
-      const errorMessage = error.response?.data?.error || error.message || 'Erro ao criar conta.';
+      console.error("Erro detalhado no cadastro:", error.response?.data || error.message);
+      
+      let errorMessage = 'Erro ao criar conta.';
+      
+      // Tratamento de mensagens comuns do Supabase
+      const backendError = error.response?.data?.error || error.message;
+      if (backendError.includes("already registered")) {
+          errorMessage = "Este e-mail já está cadastrado.";
+      } else if (backendError.includes("Password should be")) {
+          errorMessage = "A senha é muito fraca.";
+      } else if (backendError) {
+          errorMessage = backendError;
+      }
+
       Alert.alert('Erro', errorMessage);
     } finally {
       setIsLoading(false);
@@ -559,7 +576,6 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     color: '#1F2937'
   },
-  // 👇 Estilo para Label
   inputLabel: {
     fontSize: 14,
     color: '#374151',
@@ -587,7 +603,6 @@ const styles = StyleSheet.create({
   datePickerButton: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   datePickerText: { fontSize: 16, color: '#374151' },
   
-  // Estilos para o Accordion de Validação
   validatorContainer: {
     backgroundColor: 'white',
     borderRadius: 12,

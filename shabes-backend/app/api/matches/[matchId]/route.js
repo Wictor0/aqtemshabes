@@ -136,9 +136,10 @@ export async function PATCH(request, { params }) {
             try {
                 // Usamos a Service Role Key para criar um cliente com permissão total (Admin).
                 // Isso permite ver e editar matches de outros anfitriões para fazer a limpeza.
-                const supabaseAdmin = createClient(
+                const supabase = createClient(
                     process.env.NEXT_PUBLIC_SUPABASE_URL,
-                    process.env.SUPABASE_SERVICE_ROLE_KEY
+                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+                    { global: { headers: { Authorization: authHeader } } }
                 );
 
                 // 1. Busca TODOS os matches pendentes desse convidado

@@ -45,7 +45,6 @@ export default function RejectedScreen() {
               </Text>
               
               <View style={styles.highlightBox}>
-                <Icon name="info" size={20} color="#7F1D1D" style={{marginRight: 8, marginTop: 2}}/>
                 <Text style={styles.highlightText}>
                   O Shabes é uma comunidade com diretrizes específicas de convivência e segurança. Esta decisão foi baseada em nossos critérios internos de admissão para garantir a integridade da rede.
                 </Text>

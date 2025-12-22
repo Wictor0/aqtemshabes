@@ -336,9 +336,6 @@ export default function EventDetailScreen({ route, navigation }) {
                 <View style={styles.detailItem}>
                     <Icon name="map-marker-outline" color="#EC4899" size={20} />
                     <Text style={{ flex: 1 }}>{addressToShow}</Text> 
-                    {isMatchAccepted && (
-                        <Badge variant="success" style={{ marginLeft: 8 }}>Endereço Privado</Badge>
-                    )}
                 </View>
 
                 <View style={styles.detailItem}><Icon name="account-group-outline" color="#10B981" size={20} /><Text>Até {event.max_guests} convidados</Text></View>

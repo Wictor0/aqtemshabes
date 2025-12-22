@@ -174,7 +174,8 @@ export default function PublicProfileScreen({ route, navigation }) {
     );
   }
 
-  const ageGroup = calculateAgeGroup(profile.birth_date);
+  // 👇 CORREÇÃO: Usa o dado do banco se existir, senão calcula
+  const ageGroup = profile.age_group || calculateAgeGroup(profile.birth_date);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -217,20 +218,20 @@ export default function PublicProfileScreen({ route, navigation }) {
                     <View style={styles.dietaryContainer}>
                         <Icon name="alert-circle" size={16} color="#B45309" style={{marginTop: 2}} />
                         <Text style={styles.dietaryText}>
-                            <Text style={{fontWeight: 'bold'}}>Restrição Alimentar: </Text>
+                            <Text style={{fontWeight: 'bold'}}>Restrições: </Text>
                             {profile.dietary_restrictions}
                         </Text>
                     </View>
                 ) : null}
-                {/* 👆 FIM DA EXIBIÇÃO 👆 */}
 
                 {ageGroup && <Text style={styles.ageGroupText}>{ageGroup}</Text>}
+                
             </View>
 
             {/* Seção de Contato Adicionada */}
             {profile.phone && (
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Informações de Contacto</Text>
+                    <Text style={styles.sectionTitle}>Informações de Contato</Text>
                     <View style={styles.infoBox}>
                         <View style={styles.infoRow}>
                             <Icon name="phone" size={20} color="#6B7280" style={styles.infoIcon} />
@@ -263,19 +264,22 @@ export default function PublicProfileScreen({ route, navigation }) {
                 </View>
             )}
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Histórico de Eventos (Como Anfitrião)</Text>
-              {eventHistory.length > 0 ? (
-                <FlatList
-                  data={eventHistory}
-                  keyExtractor={(item) => String(item.id)}
-                  renderItem={({ item }) => <EventHistoryCard item={item} />}
-                  scrollEnabled={false}
-                />
-              ) : (
-                <Text style={styles.emptyText}>Este anfitrião ainda não completou nenhum evento.</Text>
-              )}
-            </View>
+            {/* 👇 SÓ EXIBE SE NÃO FOR USUÁRIO COMUM (ROLE !== USER) 👇 */}
+            {profile.role !== 'user' && (
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Histórico de Eventos (Como Anfitrião)</Text>
+                    {eventHistory.length > 0 ? (
+                        <FlatList
+                        data={eventHistory}
+                        keyExtractor={(item) => String(item.id)}
+                        renderItem={({ item }) => <EventHistoryCard item={item} />}
+                        scrollEnabled={false}
+                        />
+                    ) : (
+                        <Text style={styles.emptyText}>Este anfitrião ainda não completou nenhum evento.</Text>
+                    )}
+                </View>
+            )}
 
         </ScrollView>
     </SafeAreaView>
@@ -306,7 +310,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   
-  // 👇 ESTILO PARA ALINHAR O NOME E O SELO 👇
   nameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -320,7 +323,6 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
   
-  // Estilos da infoBox
   infoBox: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -336,7 +338,6 @@ const styles = StyleSheet.create({
   infoIcon: { marginRight: 16 },
   infoText: { fontSize: 16, color: '#374151' },
 
-  // Estilos das Tags
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tag: { backgroundColor: '#E0E7FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16 },
   tagText: { color: '#4338CA', fontSize: 14, fontWeight: '500' },
@@ -398,7 +399,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   
-  // 👇 Novos estilos para o badge de validação e restrição
   validatorBadge: {
     backgroundColor: '#F3F4F6',
     paddingVertical: 4,
@@ -423,6 +423,6 @@ const styles = StyleSheet.create({
   dietaryText: {
     fontSize: 14,
     color: '#92400E',
-    flex: 1, // Permite quebra de linha
+    flex: 1, 
   },
 });

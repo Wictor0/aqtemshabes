@@ -1,7 +1,6 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-// 👇 Importação relativa
 import { sendAdminNotification } from '../../../../lib/emailService';
 
 export async function POST(request) {
@@ -20,7 +19,8 @@ export async function POST(request) {
       notes,
       inviteCode,
       validatorOrganization,
-      dietaryRestrictions // 👈 NOVO CAMPO
+      dietaryRestrictions,
+      birth_date // 👈 IMPORTANTE: Recebendo a data do frontend
     } = body;
 
     const supabase = createRouteHandlerClient({ cookies });
@@ -40,7 +40,8 @@ export async function POST(request) {
           notes,
           invite_code: inviteCode,
           validatorOrganization,
-          dietaryRestrictions // 👈 Enviado nos metadados
+          dietaryRestrictions,
+          birth_date // 👈 IMPORTANTE: Enviando para o Gatilho SQL
         },
       },
     });
@@ -50,11 +51,13 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    // Envio de email para Admin
     if (data.user) {
         const emailText = `Um novo usuário se cadastrou e aguarda aprovação.\n\n` +
                           `Nome: ${name}\n` +
                           `Email: ${email}\n` +
-                          `Restrições Alimentares: ${dietaryRestrictions || 'Nenhuma'}\n` + // 👈 No Email
+                          `Nascimento: ${birth_date || 'N/A'}\n` +
+                          `Restrições Alimentares: ${dietaryRestrictions || 'Nenhuma'}\n` + 
                           `Validação Solicitada: ${validatorOrganization || 'Qualquer'}\n` + 
                           `Telefone: ${phone || 'N/A'}`;
         

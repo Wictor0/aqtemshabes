@@ -1,13 +1,12 @@
-// Carrega as variáveis de ambiente do arquivo .env
-require('dotenv').config();
+import { createClient } from '@supabase/supabase-js';
 
-const { createClient } = require('@supabase/supabase-js');
+// Não precisamos de dotenv em Next.js, ele carrega .env.local nativamente
 
-// Pega a URL e a chave do Supabase a partir das variáveis de ambiente
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-// Cria e exporta o cliente Supabase
-const supabase = createClient(supabaseUrl, supabaseKey);
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('⚠️ Supabase URL ou Key não encontrados no ambiente.');
+}
 
-module.exports = supabase;
+export const supabase = createClient(supabaseUrl, supabaseKey);

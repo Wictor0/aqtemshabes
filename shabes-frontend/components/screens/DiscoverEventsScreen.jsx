@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
-  Alert,
   RefreshControl,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -37,42 +36,29 @@ const ageGroupOptions = [
 ];
 
 const saoPauloNeighborhoods = [
-  "Higienopolis","Santa Cecilia","Jardim Paulista","Jardim Europa",
-  "Vila Nova Conceição","Perdizes","Vila Madalena","Itaim Bibi","Pompeia",
+  "Higienopolis", "Santa Cecilia", "Jardim Paulista", "Jardim Europa",
+  "Vila Nova Conceição", "Perdizes", "Vila Madalena", "Itaim Bibi", "Pompeia",
 ];
 
-// --- Componentes Auxiliares ---
-const SelectedLanguages = ({ selected, onRemove }) => {
-  if (!selected || selected.length === 0) return <Text style={styles.placeholderText}>Nenhum idioma selecionado</Text>;
-  return (
-    <View style={styles.languageContainer}>
-      {selected.map((lang) => (
-        <View key={lang} style={styles.languageChipSelected}>
-          <Text style={styles.languageChipTextSelected}>{lang}</Text>
-          <TouchableOpacity onPress={() => onRemove(lang)} style={{ marginLeft: 8 }}>
-            <Icon name="x-circle" size={16} color="white" />
-          </TouchableOpacity>
-        </View>
-      ))}
-    </View>
-  );
-};
+const availableLanguages = [
+  "Português", "Inglês", "Hebraico", "Iídiche", "Espanhol", "Outros"
+];
 
-const SelectedNeighborhoods = ({ selected, onRemove }) => {
-  if (!selected || selected.length === 0) return <Text style={styles.placeholderText}>Nenhum bairro selecionado</Text>;
-  return (
-    <View style={styles.languageContainer}>
-      {selected.map((neighborhood) => (
-        <View key={neighborhood} style={styles.languageChipSelected}>
-          <Text style={styles.languageChipTextSelected}>{neighborhood}</Text>
-          <TouchableOpacity onPress={() => onRemove(neighborhood)} style={{ marginLeft: 8 }}>
-            <Icon name="x-circle" size={16} color="white" />
-          </TouchableOpacity>
-        </View>
-      ))}
-    </View>
-  );
-};
+// --- Componente Auxiliar de Chip ---
+const FilterChip = ({ label, selected, onPress }) => (
+  <TouchableOpacity
+    onPress={() => onPress(label)}
+    style={[
+      styles.chip,
+      selected ? styles.chipSelected : styles.chipUnselected
+    ]}
+  >
+    <Text style={[
+      styles.chipText,
+      selected ? styles.chipTextSelected : styles.chipTextUnselected
+    ]}>{label}</Text>
+  </TouchableOpacity>
+);
 
 // --- Lógica de Filtros ---
 
@@ -155,13 +141,26 @@ export default function DiscoverEventsScreen({ navigation }) {
 
   // Handlers de Filtros
   const handleFilterChange = (key, value) => setFilterInputs(prev => ({ ...prev, [key]: value }));
-  const handleLanguageRemove = lang => handleFilterChange("languages", filterInputs.languages.filter(l => l !== lang));
-  const addLanguage = lang => { if (!filterInputs.languages.includes(lang)) handleFilterChange("languages", [...filterInputs.languages, lang]); };
-  const removeNeighborhood = (neighborhood) => handleFilterChange("region", filterInputs.region.filter((n) => n !== neighborhood));
-  const addNeighborhood = (neighborhood) => { if (!filterInputs.region.includes(neighborhood)) handleFilterChange("region", [...filterInputs.region, neighborhood]); };
-  
-  const openLanguageModal = () => { Alert.alert( "Adicionar Idioma", "Selecione um idioma para adicionar ao filtro.", [ { text: "Português", onPress: () => addLanguage("Português") }, { text: "Inglês", onPress: () => addLanguage("Inglês") }, { text: "Hebraico", onPress: () => addLanguage("Hebraico") }, { text: "Iídiche", onPress: () => addLanguage("Iídiche") }, { text: "Espanhol", onPress: () => addLanguage("Espanhol") }, { text: "Outros", onPress: () => addLanguage("Outros") }, { text: "Cancelar", style: "cancel" } ], { cancelable: true } ); };
-  const openNeighborhoodModal = () => { Alert.alert("Selecionar Bairro", "Escolha um bairro de São Paulo.", [ ...saoPauloNeighborhoods.map((n) => ({ text: n, onPress: () => addNeighborhood(n) })), { text: "Cancelar", style: "cancel" } ]); };
+
+  const toggleNeighborhood = (neighborhood) => {
+    setFilterInputs(prev => {
+        const current = prev.region;
+        const updated = current.includes(neighborhood)
+            ? current.filter(n => n !== neighborhood)
+            : [...current, neighborhood];
+        return { ...prev, region: updated };
+    });
+  };
+
+  const toggleLanguage = (lang) => {
+    setFilterInputs(prev => {
+        const current = prev.languages;
+        const updated = current.includes(lang)
+            ? current.filter(l => l !== lang)
+            : [...current, lang];
+        return { ...prev, languages: updated };
+    });
+  };
 
   // --- Lógica Principal de Filtragem e Ordenação ---
   useEffect(() => {
@@ -299,11 +298,16 @@ export default function DiscoverEventsScreen({ navigation }) {
               )}
 
               <Label>Região (Bairros)</Label>
-              <SelectedNeighborhoods selected={filterInputs.region} onRemove={removeNeighborhood} />
-              <Button variant="outline" onPress={openNeighborhoodModal} style={styles.languageButton}>
-                <Icon name="plus" size={16} color="#374151" style={{ marginRight: 8 }} />
-                <Text>Adicionar Bairro</Text>
-              </Button>
+              <View style={styles.chipsContainer}>
+                {saoPauloNeighborhoods.map((neighborhood) => (
+                    <FilterChip 
+                        key={neighborhood} 
+                        label={neighborhood} 
+                        selected={filterInputs.region.includes(neighborhood)}
+                        onPress={toggleNeighborhood}
+                    />
+                ))}
+              </View>
 
               <Label>Quantidade de Pessoas: {filterInputs.guestCount === 0 ? 'Qualquer' : filterInputs.guestCount}</Label>
               <Slider style={{ width: "100%", height: 40 }} minimumValue={0} maximumValue={20} step={1} value={filterInputs.guestCount} onValueChange={v => handleFilterChange("guestCount", v)} />
@@ -312,11 +316,16 @@ export default function DiscoverEventsScreen({ navigation }) {
               <Select options={ageGroupOptions} selectedValue={filterInputs.ageGroup} onValueChange={v => handleFilterChange("ageGroup", v)} />
 
               <Label>Idiomas Falados</Label>
-              <SelectedLanguages selected={filterInputs.languages} onRemove={handleLanguageRemove} />
-              <Button variant="outline" onPress={openLanguageModal} style={styles.languageButton}>
-                <Icon name="plus" size={16} color="#374151" style={{ marginRight: 8 }} />
-                <Text>Adicionar Idioma</Text>
-              </Button>
+              <View style={styles.chipsContainer}>
+                {availableLanguages.map((lang) => (
+                    <FilterChip 
+                        key={lang} 
+                        label={lang} 
+                        selected={filterInputs.languages.includes(lang)}
+                        onPress={toggleLanguage}
+                    />
+                ))}
+              </View>
               
               <View style={styles.buttonContainer}>
                 <Button variant="outline" onPress={clearFilters} style={{ flex: 1 }}><Text>Limpar</Text></Button>
@@ -431,32 +440,37 @@ const styles = StyleSheet.create({
     gap: 12, 
     marginTop: 12 
   },
-  placeholderText: { 
-    color: "#6B7280", 
-    fontStyle: "italic", 
+  // Estilos de Chip para Seleção
+  chipsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 8,
+  },
+  chip: {
     paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 4,
   },
-  languageContainer: { 
-    flexDirection: "row", 
-    flexWrap: "wrap", 
-    gap: 8 
+  chipSelected: {
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
   },
-  languageChipSelected: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    paddingVertical: 8, 
-    paddingHorizontal: 12, 
-    borderRadius: 20, 
-    backgroundColor: "#4F46E5" 
+  chipUnselected: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#D1D5DB",
   },
-  languageChipTextSelected: { 
-    color: "white", 
-    fontWeight: "bold" 
+  chipText: {
+    fontSize: 14,
+    fontWeight: "500",
   },
-  languageButton: { 
-    marginVertical: 8, 
-    flexDirection: "row", 
-    alignItems: "center" 
+  chipTextSelected: {
+    color: "#FFFFFF",
+  },
+  chipTextUnselected: {
+    color: "#374151",
   },
   resultsTitle: { 
     fontSize: 20, 

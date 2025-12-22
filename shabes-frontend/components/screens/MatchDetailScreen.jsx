@@ -174,12 +174,6 @@ export default function MatchDetailScreen({ route, navigation }) {
                             </View>
                         </View>
 
-                        {isMatchAccepted && (
-                             <Text style={styles.addressHelper}>
-                                (Endereço privado visível pois o pedido foi aceito)
-                             </Text>
-                        )}
-
                         <Text style={styles.sectionTitle}>Mensagem</Text>
                         <Text style={styles.messageText}>"{match.personal_message || 'Nenhuma mensagem enviada.'}"</Text>
 

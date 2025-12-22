@@ -143,7 +143,10 @@ export default function EventCard({
             <View style={styles.infoRow}>
               <Icon name="account-group-outline" size={16} />
               <Text style={styles.infoText}>
-                Até {event.max_guests} convidados
+                {/* 👇 CORREÇÃO AQUI: Verifica se é maior que 0 */}
+                {event.max_guests > 0 
+                  ? `Até ${event.max_guests} convidados` 
+                  : "Sem limites de convidados"}
               </Text>
               {spotsLeft > 0 && (
                 <Badge variant="outline">

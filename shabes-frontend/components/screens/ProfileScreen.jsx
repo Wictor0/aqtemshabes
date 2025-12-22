@@ -49,6 +49,7 @@ const SlidingModal = ({ visible, onClose, children }) => {
   useEffect(() => {
     if (visible) {
       setShowModal(true);
+      animValue.setValue(0); // Reset para garantir que a animação comece de baixo
       Animated.timing(animValue, {
         toValue: 1,
         duration: 300,
@@ -76,7 +77,7 @@ const SlidingModal = ({ visible, onClose, children }) => {
   });
 
   return (
-    <Modal transparent visible={showModal} onRequestClose={onClose}>
+    <Modal transparent visible={showModal} onRequestClose={onClose} animationType="none">
       <View style={styles.modalOverlayContainer}>
         <TouchableWithoutFeedback onPress={onClose}>
           <Animated.View style={[styles.modalBackdrop, { opacity: backdropOpacity }]} />
@@ -439,7 +440,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Funções para buscar e submeter Report/Avaliação
   const fetchMatchesToRate = async () => {
     if (!user) return;
     setIsLoadingMatches(true);
@@ -450,7 +450,7 @@ export default function ProfileScreen({ navigation }) {
       const filteredMatches = allMatches.filter(match => 
         match.guest_id === user.id && 
         match.status === 'accepted' && 
-        match.event && // 👇 PROTEÇÃO CRÍTICA CONTRA CRASH
+        match.event && 
         new Date(match.event.date) < today 
       );
       
@@ -502,7 +502,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
   
-  // 👇 2. Função para abrir o email da agência
   const handleContactTeam = () => {
     Linking.openURL('mailto:aquitemagency@gmail.com?subject=Solicitação para ser Anfitrião');
   };
@@ -521,7 +520,8 @@ export default function ProfileScreen({ navigation }) {
     return <SafeAreaView style={styles.centered}><Text>Perfil não encontrado.</Text></SafeAreaView>;
   }
 
-  const ageGroup = calculateAgeGroup(profile.birth_date);
+  // 👇 Tenta usar o campo salvo, senão calcula na hora
+  const ageGroup = profile.age_group || calculateAgeGroup(profile.birth_date);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -536,19 +536,30 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.cameraIconContainer}><Icon name="camera" size={18} color="#FFFFFF" /></View>
           </TouchableOpacity>
           
-          {/* 👇 NOME E SELO DE VERIFICADO AQUI 👇 */}
           <View style={styles.nameContainer}>
              <Text style={styles.fullName}>{profile.full_name}</Text>
              <VerifiedBadge role={profile.role} size={24} />
           </View>
           
-          {/* 👇 EXIBIÇÃO DA VALIDAÇÃO 👇 */}
           <View style={styles.validatorBadge}>
              <Text style={styles.validatorText}>
                 Validação: <Text style={{fontWeight: 'bold'}}>{profile.validator_organization || 'Pendente'}</Text>
              </Text>
           </View>
 
+          {/* 👇 EXIBIÇÃO DE RESTRIÇÕES ALIMENTARES 👇 */}
+          {profile.dietary_restrictions ? (
+            <View style={styles.dietaryContainer}>
+                <Icon name="alert-circle" size={16} color="#B45309" style={{marginTop: 2}} />
+                <Text style={styles.dietaryText}>
+                    <Text style={{fontWeight: 'bold'}}>Restrições: </Text>
+                    {profile.dietary_restrictions}
+                </Text>
+            </View>
+          ) : null}
+          {/* 👆 FIM DA EXIBIÇÃO 👆 */}
+
+          {/* 👇 GRUPO ETÁRIO 👇 */}
           {ageGroup && <Text style={styles.ageGroupText}>{ageGroup}</Text>}
         </View>
 
@@ -605,45 +616,6 @@ export default function ProfileScreen({ navigation }) {
             )}
         </View>
 
-        <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Interesses</Text>
-                {!isEditingInterests && (
-                    <TouchableOpacity onPress={() => setIsEditingInterests(true)}>
-                        <Icon name="edit-2" size={20} color="#6B7280" />
-                    </TouchableOpacity>
-                )}
-            </View>
-            <View style={styles.tagsContainer}>
-            {isEditingInterests ? (
-                jewishInterests.map(interest => (
-                    <InterestTagEditable 
-                        key={interest} interest={interest}
-                        isSelected={editingInterests.includes(interest)}
-                        onPress={handleToggleInterest}
-                    />
-                ))
-            ) : (
-                profile.interests && profile.interests.length > 0 ? (
-                    profile.interests.map(interest => (
-                        <InterestTagDisplay key={interest} interest={interest} />
-                    ))
-                ) : (
-                    <Text style={styles.noInterestsText}>Adicione os seus interesses.</Text>
-                )
-            )}
-            </View>
-            {isEditingInterests && (
-                 <View style={styles.editActionsContainer}>
-                    <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={() => setIsEditingInterests(false)}>
-                        <Text style={styles.cancelButtonText}>Cancelar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSaveInterests} disabled={isSaving}>
-                        {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Salvar</Text>}
-                    </TouchableOpacity>
-                </View>
-            )}
-        </View>
 
         <View style={styles.section}>
             <Text style={styles.sectionTitle}>Dependentes</Text>
@@ -700,7 +672,6 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.logoutButtonText}>Sair</Text>
             </TouchableOpacity>
             
-            {/* 👇 3. BLOCO DE AVISO PARA USUÁRIOS COMUNS 👇 */}
             {profile?.role === 'user' && (
                 <View style={styles.hostAccessContainer}>
                     <View style={styles.hostAccessHeader}>
@@ -719,7 +690,6 @@ export default function ProfileScreen({ navigation }) {
                     </TouchableOpacity>
                 </View>
             )}
-            {/* 👆 FIM DO BLOCO 👆 */}
 
           </>
         )}
@@ -827,308 +797,312 @@ export default function ProfileScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F9FAFB' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-      flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-      padding: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', backgroundColor: 'white',
-  },
-  headerTitle: { fontSize: 22, fontWeight: 'bold' },
-  container: { padding: 24, paddingBottom: 48 },
-  profileHeader: { alignItems: 'center', marginBottom: 32 },
-  avatar: {
-    width: 120, height: 120, borderRadius: 60, marginBottom: 16,
-    borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#E5E7EB',
-  },
-  uploadingOverlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center', alignItems: 'center', borderRadius: 60,
-  },
-  cameraIconContainer: {
-    position: 'absolute', bottom: 20, right: 5, backgroundColor: '#4F46E5',
-    borderRadius: 15, padding: 6, borderWidth: 2, borderColor: '#FFFFFF',
-  },
-  
-  // 👇 ESTILO PARA ALINHAR O NOME E O SELO 👇
-  nameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 0,
-  },
-  fullName: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: '#1F2937' 
-  },
-  // 👆 ----------------------- 👆
+  safeArea: { flex: 1, backgroundColor: '#F9FAFB' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: {
+      flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+      padding: 20, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', backgroundColor: 'white',
+  },
+  headerTitle: { fontSize: 22, fontWeight: 'bold' },
+  container: { padding: 24, paddingBottom: 48 },
+  profileHeader: { alignItems: 'center', marginBottom: 32 },
+  avatar: {
+    width: 120, height: 120, borderRadius: 60, marginBottom: 16,
+    borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#E5E7EB',
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center', alignItems: 'center', borderRadius: 60,
+  },
+  cameraIconContainer: {
+    position: 'absolute', bottom: 20, right: 5, backgroundColor: '#4F46E5',
+    borderRadius: 15, padding: 6, borderWidth: 2, borderColor: '#FFFFFF',
+  },
+  
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    justifyContent: 'center',
+  },
 
-  ageGroupText: { fontSize: 16, color: '#6B7280', marginTop: 4, fontStyle: 'italic' },
-  section: { marginBottom: 32 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
-  infoBox: {
-    backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 16, 
-    borderWidth: 1, borderColor: '#E5E7EB'
-  },
-  infoRow: { 
-    flexDirection: 'row', alignItems: 'center', 
-    paddingVertical: 12, 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#F3F4F6',
-  },
-  infoIcon: { marginRight: 16 }, 
-  infoText: { fontSize: 16, color: '#374151' },
-  infoInput: { fontSize: 16, color: '#1F2937', flex: 1, paddingVertical: 4 }, 
-  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tagDisplay: { backgroundColor: '#E0E7FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16 },
-  tagDisplayText: { color: '#4338CA', fontSize: 14, fontWeight: '500' },
-  tagEditable: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 },
-  tagSelected: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
-  tagNotSelected: { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' },
-  tagEditableText: { fontSize: 14, fontWeight: '500' },
-  tagTextSelected: { color: '#FFFFFF' },
-  tagTextNotSelected: { color: '#374151' },
-  noInterestsText: { color: '#6B7280', fontStyle: 'italic' },
-  noDependentsText: { color: '#6B7280', fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
-  addDependentFormContainer: {
-    backgroundColor: 'white', borderRadius: 12, padding: 16,
-    borderWidth: 1, borderColor: '#E5E7EB', gap: 16,
-  },
-  input: {
-    backgroundColor: '#F9FAFB', fontSize: 16, padding: 12, borderRadius: 8,
-    borderWidth: 1, borderColor: '#D1D5DB',
-  },
-  datePickerText: { fontSize: 16, color: '#374151' },
-  pickerContainer: {
-    backgroundColor: '#F9FAFB', borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB',
-  },
-  dependentCard: {
-    backgroundColor: 'white', borderRadius: 12, padding: 16,
-    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  dependentName: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
-  dependentRelationship: { fontSize: 14, color: '#6B7280', fontStyle: 'italic' },
-  dependentDescription: { fontSize: 14, color: '#374151', marginTop: 8 },
-  editActionsContainer: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  button: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
-  saveButton: { backgroundColor: '#4F46E5' },
-  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  cancelButton: { backgroundColor: '#E5E7EB' },
-  cancelButtonText: { color: '#374151', fontSize: 16, fontWeight: 'bold' },
-  deleteButton: { backgroundColor: '#EF4444', flex: 0, paddingHorizontal: 16 },
-  actionButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 16, borderRadius: 12,
-  },
-  addDependentButton: {
-    backgroundColor: '#E0E7FF',
-    marginTop: 16,
-  },
-  addDependentButtonText: { color: '#4338CA', fontSize: 16, fontWeight: 'bold' },
-  
-  evaluateButton: {
-    backgroundColor: '#FFFBEB', 
-    marginTop: 16,
-  },
-  evaluateButtonText: {
-    color: '#B45309', 
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  fullName: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
+  ageGroupText: { fontSize: 16, color: '#6B7280', marginTop: 4, fontStyle: 'italic' },
+  username: { fontSize: 16, color: '#6B7280', marginTop: 4 },
+  section: { marginBottom: 32 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },
+  infoBox: {
+    backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 16, 
+    borderWidth: 1, borderColor: '#E5E7EB'
+  },
+  infoRow: { 
+    flexDirection: 'row', alignItems: 'center', 
+    paddingVertical: 12, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#F3F4F6',
+  },
+  infoIcon: { marginRight: 16 }, 
+  infoText: { fontSize: 16, color: '#374151' },
+  infoInput: { fontSize: 16, color: '#1F2937', flex: 1, paddingVertical: 4 }, 
+  tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  tagDisplay: { backgroundColor: '#E0E7FF', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16 },
+  tagDisplayText: { color: '#4338CA', fontSize: 14, fontWeight: '500' },
+  tagEditable: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 },
+  tagSelected: { backgroundColor: '#4F46E5', borderColor: '#4F46E5' },
+  tagNotSelected: { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' },
+  tagEditableText: { fontSize: 14, fontWeight: '500' },
+  tagTextSelected: { color: '#FFFFFF' },
+  tagTextNotSelected: { color: '#374151' },
+  noInterestsText: { color: '#6B7280', fontStyle: 'italic' },
+  noDependentsText: { color: '#6B7280', fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
+  addDependentFormContainer: {
+    backgroundColor: 'white', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: '#E5E7EB', gap: 16,
+  },
+  input: {
+    backgroundColor: '#F9FAFB', fontSize: 16, padding: 12, borderRadius: 8,
+    borderWidth: 1, borderColor: '#D1D5DB',
+  },
+  datePickerText: { fontSize: 16, color: '#374151' },
+  pickerContainer: {
+    backgroundColor: '#F9FAFB', borderRadius: 8, borderWidth: 1, borderColor: '#D1D5DB',
+  },
+  dependentCard: {
+    backgroundColor: 'white', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  dependentName: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
+  dependentRelationship: { fontSize: 14, color: '#6B7280', fontStyle: 'italic' },
+  dependentDescription: { fontSize: 14, color: '#374151', marginTop: 8 },
+  editActionsContainer: { flexDirection: 'row', gap: 12, marginTop: 12 },
+  button: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
+  saveButton: { backgroundColor: '#4F46E5' },
+  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  cancelButton: { backgroundColor: '#E5E7EB' },
+  cancelButtonText: { color: '#374151', fontSize: 16, fontWeight: 'bold' },
+  deleteButton: { backgroundColor: '#EF4444', flex: 0, paddingHorizontal: 16 },
+  actionButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: 16, borderRadius: 12,
+  },
+  addDependentButton: {
+    backgroundColor: '#E0E7FF',
+    marginTop: 16,
+  },
+  addDependentButtonText: { color: '#4338CA', fontSize: 16, fontWeight: 'bold' },
+  
+  evaluateButton: {
+    backgroundColor: '#FFFBEB', 
+    marginTop: 16,
+  },
+  evaluateButtonText: {
+    color: '#B45309', 
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 
-  logoutButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: 16, borderRadius: 12, marginTop: 16, backgroundColor: '#FEE2E2',
-  },
-  logoutButtonText: { color: '#EF4444', fontSize: 16, fontWeight: 'bold' },
+  logoutButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: 16, borderRadius: 12, marginTop: 16, backgroundColor: '#FEE2E2',
+  },
+  logoutButtonText: { color: '#EF4444', fontSize: 16, fontWeight: 'bold' },
 
-  // --- ESTILOS DO MODAL ANIMADO ---
-  modalOverlayContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'black',
-  },
-  modalContentWrapper: {
-    width: '100%',
-  },
-
-  // --- CONTEÚDO DO MODAL DE REPORT (SHEET) ---
-  modalSheet: {
-    backgroundColor: '#F9FAFB',
-    height: SCREEN_HEIGHT * 0.85, // 85% da tela, como no original
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 16,
-    // Sombra para dar destaque na subida
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  modalCloseButton: {
-    padding: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-  },
-  modalContent: {
-    flex: 1,
-    paddingTop: 16,
-    paddingBottom: 30, // Margem extra para evitar corte em telas com notch
-  },
-  eventToRateCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-  },
-  eventToRateTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  eventToRateDate: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  ratedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#F0FDF4',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-  },
-  ratedBadgeText: {
-    color: '#16A34A',
-    fontWeight: '500',
-  },
-  backToListButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    padding: 8,
-    alignSelf: 'flex-start',
-  },
-  backToListButtonText: {
-    color: '#4F46E5',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  ratingEventTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  ratingLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    marginTop: 16,
-  },
-  ratingSliderLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#F59E0B',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  ratingCommentInput: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    height: 120,
-    textAlignVertical: 'top',
-    fontSize: 16,
-    marginTop: 8,
-  },
-  
-  // 👇 Novos estilos para o badge de validação
-  validatorBadge: {
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    marginTop: 6,
-    marginBottom: 2,
-  },
-  validatorText: {
-    fontSize: 13,
-    color: '#4B5563',
-  },
-  
-  hostAccessContainer: {
-    backgroundColor: '#FFFBEB', 
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FCD34D', 
-    marginVertical: 16,
-  },
-  hostAccessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  hostAccessTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#D97706', 
-  },
-  hostAccessText: {
-    fontSize: 14,
-    color: '#B45309',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  hostAccessSubtext: {
-    fontSize: 13,
-    color: '#92400E',
-    marginBottom: 12,
-  },
-  contactSupportButton: {
-    backgroundColor: '#D97706',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-  },
-  contactSupportButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
+  // --- ESTILOS DO MODAL CORRIGIDOS ---
+  modalOverlayContainer: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContentWrapper: {
+    width: '100%',
+  },
+  modalSheet: { // Renomeado de modalContainer para corresponder ao uso
+    backgroundColor: '#F9FAFB',
+    height: '85%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 24,
+    padding: 16,
+    width: '100%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    padding: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
+  },
+  modalContent: {
+    flex: 1,
+    paddingTop: 16,
+    paddingBottom: 30, // Margem extra para evitar corte em telas com notch
+  },
+  eventToRateCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+  eventToRateTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  eventToRateDate: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  ratedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F0FDF4',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  ratedBadgeText: {
+    color: '#16A34A',
+    fontWeight: '500',
+  },
+  backToListButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+    padding: 8,
+    alignSelf: 'flex-start',
+  },
+  backToListButtonText: {
+    color: '#4F46E5',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  ratingEventTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  ratingLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+    marginTop: 16,
+  },
+  ratingSliderLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#F59E0B',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  ratingCommentInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    height: 120,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    marginTop: 8,
+  },
+  
+  validatorBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  validatorText: {
+    fontSize: 13,
+    color: '#4B5563',
+  },
+  
+  // 👇 Novos estilos para Bio Alimentar
+  dietaryContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#FFFBEB',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
+    maxWidth: '90%',
+  },
+  dietaryText: {
+    fontSize: 14,
+    color: '#92400E',
+    flex: 1, 
+  },
+  
+  hostAccessContainer: {
+    backgroundColor: '#FFFBEB', 
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FCD34D', 
+    marginVertical: 16,
+  },
+  hostAccessHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  hostAccessTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#D97706', 
+  },
+  hostAccessText: {
+    fontSize: 14,
+    color: '#B45309',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  hostAccessSubtext: {
+    fontSize: 13,
+    color: '#92400E',
+    marginBottom: 12,
+  },
+  contactSupportButton: {
+    backgroundColor: '#D97706',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  contactSupportButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
 });

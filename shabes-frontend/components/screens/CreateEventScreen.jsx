@@ -66,7 +66,7 @@ const saoPauloNeighborhoods = [
   "Pompeia",
 ];
 
-// Componente para exibir idiomas
+// Componente para exibir idiomas (Múltipla escolha)
 const SelectedLanguages = ({ selected, onRemove }) => {
   if (selected.length === 0) {
     return <Text style={styles.placeholderText}>Nenhum idioma selecionado</Text>;
@@ -88,36 +88,13 @@ const SelectedLanguages = ({ selected, onRemove }) => {
   );
 };
 
-// Componente para exibir bairros
-const SelectedNeighborhoods = ({ selected, onRemove }) => {
-  if (selected.length === 0) {
-    return <Text style={styles.placeholderText}>Nenhum bairro selecionado</Text>;
-  }
-  return (
-    <View style={styles.languageContainer}>
-      {selected.map((neighborhood) => (
-        <View key={neighborhood} style={styles.languageChipSelected}>
-          <Text style={styles.languageChipTextSelected}>{neighborhood}</Text>
-          <TouchableOpacity
-            onPress={() => onRemove(neighborhood)}
-            style={{ marginLeft: 8 }}
-          >
-            <Icon name="close-circle" size={16} color="white" />
-          </TouchableOpacity>
-        </View>
-      ))}
-    </View>
-  );
-};
-
 export default function CreateEventScreen({ navigation }) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [isCepLoading, setIsCepLoading] = useState(false);
   
   // Controles de data
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false); 
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
   // Lógica de Data Inicial
   const getInitialValidDate = () => {
@@ -142,91 +119,26 @@ export default function CreateEventScreen({ navigation }) {
     title: "",
     description: "",
     date: initialDate,
-    deadline: new Date(initialDate.getTime() - 24 * 60 * 60 * 1000), 
-    approximateAddress: [], 
+    deadline: new Date(initialDate.getTime() - 24 * 60 * 60 * 1000), // Padrão: 1 dia antes
     maxGuests: 0, 
     targetAudience: [], 
     languages: ["Português"],
     mealType: getMealTypeForDate(initialDate), 
-    cep: "",
-    street: "",
-    number: "",
-    complement: "",
-    neighborhood: "",
-    city: "",
-    state: "",
+    
+    // Endereço Simplificado (Apenas Bairro)
+    neighborhood: "", 
   });
-
-  const dismissKeyboard = () => {
-    try {
-      if (Keyboard && typeof Keyboard.dismiss === 'function') {
-        Keyboard.dismiss();
-      }
-    } catch (error) {
-      console.log("Erro ao fechar teclado ignorado:", error);
-    }
-  };
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleCepChange = (value) => {
-    const cleaned = value.replace(/\D/g, ""); 
-    if (cleaned.length > 8) return; 
-
-    let formatted = cleaned;
-    if (cleaned.length > 5) {
-      formatted = `${cleaned.slice(0, 5)}-${cleaned.slice(5)}`;
-    }
-    
-    handleInputChange("cep", formatted);
-  };
-
-  const fetchAddressFromCEP = async (cep) => {
-    const cleanedCep = cep.replace(/\D/g, ""); 
-    if (cleanedCep.length !== 8) return; 
-
-    setIsCepLoading(true);
-    try {
-      const response = await fetch(`https://viacep.com.br/ws/${cleanedCep}/json/`);
-      const data = await response.json();
-
-      if (data.erro) {
-        toast({ type: "error", title: "CEP não encontrado" });
-        setFormData(prev => ({
+  // Handler para seleção de bairro único
+  const handleNeighborhoodSelect = (neighborhood) => {
+      setFormData(prev => ({
           ...prev,
-          street: "",
-          neighborhood: "",
-          city: "",
-          state: "",
-          approximateAddress: [], 
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          street: data.logradouro || "",
-          neighborhood: data.bairro || "",
-          city: data.localidade || "",
-          state: data.uf || "",
-          // Se quiser auto-preencher a região pública com o bairro do CEP, descomente abaixo:
-          // approximateAddress: data.bairro ? [data.bairro] : prev.approximateAddress, 
-        }));
-      }
-    } catch (error) {
-      console.error("Erro ao buscar CEP:", error);
-      toast({ type: "error", title: "Erro ao buscar CEP" });
-    } finally {
-      setIsCepLoading(false);
-    }
-  };
-
-  const handleCepBlur = () => {
-    fetchAddressFromCEP(formData.cep);
-  };
-
-  const handleNeighborhoodChange = (text) => {
-      setFormData(prev => ({ ...prev, neighborhood: text }));
+          neighborhood: neighborhood
+      }));
   };
 
   const onDateChange = (event, selectedDate) => {
@@ -244,6 +156,7 @@ export default function CreateEventScreen({ navigation }) {
         ...prev,
         date: selectedDate,
         mealType: day === 5 ? 'jantar' : 'almoço',
+        // Ajusta o prazo sugerido para 1 dia antes da nova data
         deadline: new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000)
       }));
     }
@@ -278,24 +191,17 @@ export default function CreateEventScreen({ navigation }) {
     });
   };
 
-  const addNeighborhood = (neighborhood) => {
-    if (!formData.approximateAddress.includes(neighborhood)) {
-      handleInputChange("approximateAddress", [...formData.approximateAddress, neighborhood]);
+  const addLanguage = (language) => {
+    if (!formData.languages.includes(language)) {
+      handleInputChange("languages", [...formData.languages, language]);
     }
   };
 
-  const removeNeighborhood = (neighborhood) => {
-    handleInputChange("approximateAddress", formData.approximateAddress.filter((n) => n !== neighborhood));
-  };
-
-  const openNeighborhoodModal = () => {
-    Alert.alert("Selecionar Bairro", "Escolha um bairro de São Paulo.", [
-      ...saoPauloNeighborhoods.map((n) => ({
-        text: n,
-        onPress: () => addNeighborhood(n),
-      })),
-      { text: "Cancelar", style: "cancel" },
-    ]);
+  const removeLanguage = (language) => {
+    handleInputChange(
+      "languages",
+      formData.languages.filter((l) => l !== language)
+    );
   };
 
   const openLanguageModal = () => {
@@ -310,25 +216,13 @@ export default function CreateEventScreen({ navigation }) {
     ]);
   };
 
-  const addLanguage = (language) => {
-    if (!formData.languages.includes(language)) {
-      handleInputChange("languages", [...formData.languages, language]);
-    }
-  };
-
-  const handlePrivacyInfo = () => {
-    Alert.alert("Endereço Privado", "Para sua segurança, o endereço completo do evento só será compartilhado com usuários confirmados.");
-  };
-
   const handleSubmit = async () => {
+    // Validação
     if (
       !formData.title.trim() ||
-      !formData.cep.trim() ||
-      !formData.street.trim() ||
-      !formData.number.trim() ||
-      !formData.neighborhood.trim() 
+      !formData.neighborhood // Valida se um bairro foi selecionado
     ) {
-      return toast({ type: "error", title: "Campos obrigatórios", description: "Preencha o título e o endereço completo." });
+      return toast({ type: "error", title: "Campos obrigatórios", description: "Preencha o título e selecione um bairro." });
     }
 
     if (formData.targetAudience.length === 0) {
@@ -339,26 +233,27 @@ export default function CreateEventScreen({ navigation }) {
         return toast({ type: "error", title: "Idiomas", description: "Selecione pelo menos um idioma." });
     }
 
-    if (formData.deadline >= formData.date) {
+    // Validação de Prazo
+    const eventDate = new Date(formData.date);
+    eventDate.setHours(0,0,0,0);
+    const deadlineDate = new Date(formData.deadline);
+    deadlineDate.setHours(0,0,0,0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (deadlineDate >= eventDate) {
         return toast({ type: "error", title: "Prazo inválido", description: "O prazo de inscrição deve ser ANTES do dia do evento." });
     }
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const deadlineCheck = new Date(formData.deadline);
-    deadlineCheck.setHours(0,0,0,0);
-
-    if (deadlineCheck < today) {
+    if (deadlineDate < today) {
          return toast({ type: "error", title: "Prazo no passado", description: "O prazo de inscrição não pode ser uma data passada." });
     }
 
     setIsLoading(true);
     try {
-      const full_address = `${formData.street}, ${formData.number}${
-        formData.complement ? `, ${formData.complement}` : ""
-      } - ${formData.neighborhood}, ${formData.city} - ${
-        formData.state
-      }, CEP: ${formData.cep}`;
+      // Como removemos o endereço privado, usamos o Bairro como endereço completo
+      const full_address = `${formData.neighborhood}, São Paulo - SP`;
+      const approximate_address = formData.neighborhood; 
 
       const eventPayload = {
         title: formData.title,
@@ -366,7 +261,7 @@ export default function CreateEventScreen({ navigation }) {
         date: formData.date.toISOString(),
         deadline_datetime: formData.deadline.toISOString(),
         full_address: full_address,
-        approximate_address: formData.approximateAddress.join(", "),
+        approximate_address: approximate_address, 
         max_guests: formData.maxGuests,
         target_audience: formData.targetAudience,
         languages: formData.languages,
@@ -380,7 +275,7 @@ export default function CreateEventScreen({ navigation }) {
       navigation.goBack();
     } catch (error) {
       console.error("Erro ao criar evento:", error);
-      toast({ type: "error", title: "Erro ao criar evento", description: "Ocorreu um problema ao salvar." });
+      toast({ type: "error", title: "Erro ao criar evento", description: "Ocorreu um problema ao salvar. Tente novamente." });
     } finally {
       setIsLoading(false);
     }
@@ -394,12 +289,12 @@ export default function CreateEventScreen({ navigation }) {
       >
         <ScrollView 
             contentContainerStyle={styles.container}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="handled" 
             keyboardDismissMode="on-drag"
         >
             <View style={styles.contentWrapper}>
               
-              {/* CARD 1: INFORMAÇÕES DO EVENTO (Unificado) */}
+              {/* CARD 1: INFORMAÇÕES DO EVENTO */}
               <Card style={{ width: "100%", marginBottom: 20 }}>
                 <CardHeader>
                   <CardTitle>Informações do Evento</CardTitle>
@@ -409,7 +304,6 @@ export default function CreateEventScreen({ navigation }) {
                 </CardHeader>
                 <CardContent>
                   
-                  {/* Título */}
                   <View style={styles.formSection}>
                     <Label>Título do Evento</Label>
                     <Input
@@ -419,7 +313,6 @@ export default function CreateEventScreen({ navigation }) {
                     />
                   </View>
 
-                  {/* Descrição */}
                   <View style={styles.formSection}>
                     <Label>Descrição</Label>
                     <Textarea
@@ -429,25 +322,21 @@ export default function CreateEventScreen({ navigation }) {
                     />
                   </View>
 
-                  
-                  {/* Data do Evento */}
+                  {/* DATA DO EVENTO */}
                   <View style={styles.formSection}>
                     <Label>Data do Evento</Label>
                     {Platform.OS === "android" && (
                       <>
-                        <TouchableOpacity
-                          onPress={() => setShowDatePicker(true)}
-                          style={styles.dateButton}
-                        >
+                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
                           <Icon name="calendar" size={24} color="#374151" />
                           <Text style={styles.dateButtonText}>
-                            {formData.date.toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {formData.date.toLocaleDateString("pt-BR")}
                           </Text>
                         </TouchableOpacity>
                         {showDatePicker && (
                           <DateTimePicker
                             value={formData.date}
-                            mode="date"
+                            mode="date" 
                             display="default"
                             onChange={onDateChange}
                             minimumDate={new Date()}
@@ -483,19 +372,16 @@ export default function CreateEventScreen({ navigation }) {
                     </View>
                   </View>
 
-                  {/* Prazo Limite */}
+                  {/* PRAZO LIMITE */}
                   <View style={styles.formSection}>
-                    <Label>Prazo Limite para Inscrições</Label>
-                    <Text style={styles.helperText}>Até quando aceita pedidos?</Text>
+                    <Label>Data Limite para Inscrições</Label>
+                    <Text style={styles.helperText}>Até qual dia aceita pedidos?</Text>
                     {Platform.OS === "android" && (
                       <>
-                        <TouchableOpacity
-                          onPress={() => setShowDeadlinePicker(true)}
-                          style={[styles.dateButton, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]} 
-                        >
+                        <TouchableOpacity onPress={() => setShowDeadlinePicker(true)} style={[styles.dateButton, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
                           <Icon name="clock" size={24} color="#D97706" />
                           <Text style={[styles.dateButtonText, { color: '#D97706', fontWeight: '600' }]}>
-                            {formData.deadline.toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {formData.deadline.toLocaleDateString("pt-BR")}
                           </Text>
                         </TouchableOpacity>
                         {showDeadlinePicker && (
@@ -524,10 +410,9 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                   </View>
 
-                  {/* N° Convidados */}
                   <View style={styles.formSection}>
+                    <Label>Nº de Convidados</Label>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <Label>Nº de Convidados</Label>
                       <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#4F46E5' }}>
                         {formData.maxGuests === 0 ? "Qualquer" : formData.maxGuests}
                       </Text>
@@ -543,12 +428,9 @@ export default function CreateEventScreen({ navigation }) {
                       maximumTrackTintColor="#E5E7EB"
                       thumbTintColor="#4F46E5"
                     />
-                    <Text style={styles.helperText}>
-                      0 para ilimitado.
-                    </Text>
+                    <Text style={styles.helperText}>0 para ilimitado.</Text>
                   </View>
 
-                  {/* Público Alvo */}
                   <View style={styles.formSection}>
                     <Label>Público Alvo</Label>
                     <View style={styles.chipsContainer}>
@@ -570,7 +452,6 @@ export default function CreateEventScreen({ navigation }) {
                     </View>
                   </View>
 
-                  {/* Idiomas */}
                   <View style={styles.formSection}>
                     <Label>Idiomas</Label>
                     <View style={styles.chipsContainer}>
@@ -595,86 +476,38 @@ export default function CreateEventScreen({ navigation }) {
                 </CardContent>
               </Card>
 
-              {/* CARD 2: ENDEREÇO */}
+              {/* CARD 2: ENDEREÇO (Apenas Bairros de SP) */}
               <Card style={{ width: "100%" }}>
                 <CardHeader>
                   <CardTitle>Endereço</CardTitle>
                   <CardDescription>
-                    Defina a região pública e o endereço privado.
+                    Selecione o bairro onde ocorrerá o evento.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                
-                  {/* Endereço Completo */}
                   <View style={styles.formSection}>
-                    <View style={styles.labelWithInfoContainer}>
-                      <Label>Endereço Completo (Privado)</Label>
-                      <TouchableOpacity onPress={handlePrivacyInfo} style={styles.infoIconTouchable}>
-                        <Icon name="info" size={16} color="#6B7280" />
-                      </TouchableOpacity>
+                    <Label>Bairro</Label>
+                    <View style={styles.chipsContainer}>
+                      {saoPauloNeighborhoods.map((bairro) => {
+                        const isSelected = formData.neighborhood === bairro;
+                        return (
+                          <TouchableOpacity
+                            key={bairro}
+                            style={[styles.chip, isSelected && styles.chipSelected]}
+                            onPress={() => handleNeighborhoodSelect(bairro)}
+                          >
+                            <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                              {bairro}
+                            </Text>
+                            {isSelected && <Icon name="check" size={14} color="#FFF" style={{marginLeft: 4}} />}
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
-                    
-                    <View style={styles.cepContainer}>
-                      <Input
-                        value={formData.cep}
-                        onChangeText={handleCepChange} 
-                        onBlur={handleCepBlur} 
-                        placeholder="CEP"
-                        keyboardType="numeric"
-                        maxLength={9} 
-                        style={{ flex: 1 }}
-                      />
-                      {isCepLoading && <ActivityIndicator style={styles.cepLoading} size="small" />}
-                    </View>
-
-                    <Input
-                      value={formData.street}
-                      onChangeText={(v) => handleInputChange("street", v)}
-                      placeholder="Rua"
-                      style={{ backgroundColor: formData.street ? '#F3F4F6' : '#FFFFFF' }} 
-                    />
-
-                    <View style={styles.horizontalInputContainer}>
-                      <Input
-                        value={formData.number}
-                        onChangeText={(v) => handleInputChange("number", v)}
-                        placeholder="Nº"
-                        keyboardType="numeric"
-                        style={{ flex: 1 }} 
-                      />
-                      <Input
-                        value={formData.complement}
-                        onChangeText={(v) => handleInputChange("complement", v)}
-                        placeholder="Comp."
-                        style={{ flex: 2 }} 
-                      />
-                    </View>
-
-                    <Input
-                      value={formData.neighborhood}
-                      onChangeText={handleNeighborhoodChange} 
-                      placeholder="Bairro"
-                      style={{ backgroundColor: formData.neighborhood ? '#F3F4F6' : '#FFFFFF' }}
-                    />
-                    
-                    <View style={styles.horizontalInputContainer}>
-                      <Input
-                        value={formData.city}
-                        onChangeText={(v) => handleInputChange("city", v)}
-                        placeholder="Cidade"
-                        style={{ flex: 3, backgroundColor: formData.city ? '#F3F4F6' : '#FFFFFF' }}
-                      />
-                      <Input
-                        value={formData.state}
-                        onChangeText={(v) => handleInputChange("state", v)}
-                        placeholder="UF"
-                        maxLength={2}
-                        autoCapitalize="characters"
-                        style={{ flex: 1, backgroundColor: formData.state ? '#F3F4F6' : '#FFFFFF' }}
-                      />
-                    </View>
+                    <Text style={styles.helperText}>
+                       Este bairro será exibido publicamente para os interessados.
+                    </Text>
                   </View>
-
                 </CardContent>
               </Card>
 
@@ -697,10 +530,9 @@ export default function CreateEventScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
   container: { padding: 16, flexGrow: 1 },
-  contentWrapper: { width: "100%", maxWidth: 700, alignItems: 'center' }, // Centraliza os cards
+  contentWrapper: { width: "100%", maxWidth: 700, alignItems: 'center' },
   formSection: { gap: 8, marginBottom: 16 },
   helperText: { fontSize: 12, color: "#6B7280", marginTop: 4 },
-  
   dateButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -724,6 +556,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
   },
   placeholderText: { color: "#6B7280", fontStyle: "italic" },
+  
   languageContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -782,28 +615,6 @@ const styles = StyleSheet.create({
       fontWeight: '600'
   },
 
-  cepContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  cepLoading: {
-    position: 'absolute',
-    right: 12,
-  },
-  horizontalInputContainer: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  labelWithInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  infoIconTouchable: {
-    padding: 4,
-  },
-  
   chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
