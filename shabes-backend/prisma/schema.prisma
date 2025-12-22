@@ -86,8 +86,8 @@ model Invite {
   isUsed      Boolean  @default(false)
   generatedBy String
   generator   User     @relation("InviteGenerator", fields: [generatedBy], references: [id])
-  usedBy      String?
-  user        User?    @relation("InviteUser", fields: [usedBy], references: [id])
+  usedBy      String?  @unique
+user        User?    @relation("InviteUser", fields: [usedBy], references: [id])
   createdAt   DateTime @default(now())
   usedAt      DateTime?
 }
