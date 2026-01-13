@@ -3,54 +3,65 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getVerificationHtml } from '../../../../src/templates/verificationPage';
 
-// Garantimos que a rota é dinâmica para evitar erros de cache durante o build no Render
+// Forçamos a rota a ser dinâmica para evitar que o build do Next.js tente pré-renderizá-la sem as variáveis de ambiente
 export const dynamic = 'force-dynamic';
 
+/**
+ * Rota de confirmação de e-mail (Supabase Auth)
+ */
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
 
-    console.log("[AUTH] Tentativa de confirmação de e-mail iniciada.");
+    console.log("[AUTH] Processando confirmação de e-mail...");
 
-    // Verificação das variáveis de ambiente necessárias para o Supabase
+    // Validação de segurança das chaves de ambiente
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      console.error("[AUTH] Erro: Variáveis de ambiente do Supabase não configuradas no Render.");
-      return new NextResponse(getVerificationHtml('error'), { 
+      console.error("[AUTH] ERRO CRÍTICO: Variáveis de ambiente do Supabase ausentes no servidor.");
+      const errorHtml = getVerificationHtml('error');
+      return new NextResponse(errorHtml, { 
         status: 500, 
         headers: { 'Content-Type': 'text/html' } 
       });
     }
 
     if (code) {
-      const cookieStore = cookies();
-      const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+      // Inicialização padrão recomendada para Next.js 14
+      const supabase = createRouteHandlerClient({ cookies });
       
-      // Troca o código temporário do Supabase por uma sessão real do utilizador
+      // Troca o código pela sessão real
       const { error } = await supabase.auth.exchangeCodeForSession(code);
       
       if (!error) {
-        console.log("[AUTH] Sucesso: E-mail verificado e sessão criada.");
-        return new NextResponse(getVerificationHtml('success'), {
+        console.log("[AUTH] Sucesso: E-mail verificado.");
+        const successHtml = getVerificationHtml('success');
+        return new NextResponse(successHtml, {
           headers: { 'Content-Type': 'text/html' },
         });
       }
       
-      console.error("[AUTH] Erro ao trocar código por sessão:", error.message);
+      console.error("[AUTH] Erro do Supabase ao trocar código:", error.message);
     }
 
-    // Caso não exista código ou ocorra um erro na validação
-    console.warn("[AUTH] Aviso: Código de confirmação inválido ou link expirado.");
-    return new NextResponse(getVerificationHtml('error'), {
+    // Retorno padrão para links inválidos ou sem código
+    console.warn("[AUTH] Aviso: Link inválido ou código expirado.");
+    const invalidHtml = getVerificationHtml('error');
+    return new NextResponse(invalidHtml, {
       status: 400,
       headers: { 'Content-Type': 'text/html' },
     });
 
   } catch (err) {
-    console.error("[AUTH] Erro crítico inesperado na rota de confirmação:", err);
-    return new NextResponse(getVerificationHtml('error'), { 
-      status: 500,
-      headers: { 'Content-Type': 'text/html' },
-    });
+    console.error("[AUTH] Erro inesperado na rota:", err);
+    // Em caso de erro catastrófico, tentamos retornar o HTML de erro
+    try {
+      return new NextResponse(getVerificationHtml('error'), { 
+        status: 500,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    } catch {
+      return new NextResponse("Erro interno no servidor.", { status: 500 });
+    }
   }
 }
