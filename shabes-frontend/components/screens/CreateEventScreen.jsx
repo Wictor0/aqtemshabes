@@ -328,7 +328,8 @@ export default function CreateEventScreen({ navigation }) {
                     {Platform.OS === "android" && (
                       <>
                         <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-                          <Icon name="calendar" size={24} color="#374151" />
+                          {/* CORREÇÃO: "calendar" -> "calendar-month" */}
+                          <Icon name="calendar-month" size={24} color="#374151" />
                           <Text style={styles.dateButtonText}>
                             {formData.date.toLocaleDateString("pt-BR")}
                           </Text>
@@ -346,7 +347,8 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                     {Platform.OS === "ios" && (
                       <View style={styles.iosPickerContainer}>
-                        <Icon name="calendar" size={24} color="#374151" />
+                        {/* CORREÇÃO: "calendar" -> "calendar-month" */}
+                        <Icon name="calendar-month" size={24} color="#374151" />
                         <DateTimePicker
                           value={formData.date}
                           mode="date"
@@ -359,8 +361,9 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                     {/* Feedback Turno */}
                     <View style={styles.autoMealContainer}>
+                        {/* 👇 CORREÇÃO DOS ÍCONES SOL/LUA 👇 */}
                         <Icon 
-                            name={formData.mealType === 'jantar' ? "moon" : "sun"} 
+                            name={formData.mealType === 'jantar' ? "weather-night" : "weather-sunny"} 
                             size={16} 
                             color="#4F46E5" 
                         />
@@ -379,7 +382,8 @@ export default function CreateEventScreen({ navigation }) {
                     {Platform.OS === "android" && (
                       <>
                         <TouchableOpacity onPress={() => setShowDeadlinePicker(true)} style={[styles.dateButton, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
-                          <Icon name="clock" size={24} color="#D97706" />
+                          {/* CORREÇÃO: "clock" -> "clock-outline" */}
+                          <Icon name="clock-outline" size={24} color="#D97706" />
                           <Text style={[styles.dateButtonText, { color: '#D97706', fontWeight: '600' }]}>
                             {formData.deadline.toLocaleDateString("pt-BR")}
                           </Text>
@@ -397,7 +401,8 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                     {Platform.OS === "ios" && (
                       <View style={[styles.iosPickerContainer, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
-                        <Icon name="clock" size={24} color="#D97706" />
+                        {/* CORREÇÃO: "clock" -> "clock-outline" */}
+                        <Icon name="clock-outline" size={24} color="#D97706" />
                         <DateTimePicker
                           value={formData.deadline}
                           mode="date"
@@ -512,14 +517,27 @@ export default function CreateEventScreen({ navigation }) {
               </Card>
 
               {/* Botão Criar */}
-              <Button
-                onPress={handleSubmit}
-                disabled={isLoading}
-                style={{ marginTop: 20 }}
-                variant="host"
-              >
-                {isLoading ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Criar Evento"}
-              </Button>
+              <View style={{ width: "100%", marginTop: 20 }}>
+                <Button
+                  onPress={handleSubmit}
+                  disabled={isLoading}
+                  variant="host"
+                  style={{ 
+                    width: "100%", 
+                    alignItems: "center", 
+                    justifyContent: "center",
+                    flexDirection: "row" 
+                  }}
+                >
+                  {isLoading ? (
+                    <LoadingSpinner size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={{ color: "#FFFFFF", fontWeight: "bold", textAlign: "center" }}>
+                      Criar Evento
+                    </Text>
+                  )}
+                </Button>
+              </View>
             </View>
         </ScrollView>
       </KeyboardAvoidingView>

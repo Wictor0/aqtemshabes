@@ -10,33 +10,51 @@ import {
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import Icon from "../ui/Icon";
-// 👇 Importar o componente de Selo
 import VerifiedBadge from "../ui/VerifiedBadge";
 
 /**
- * Mapas para exibir labels amigáveis em português
+ * Mapas Completos para tradução
  */
 const hostAgeGroupLabels = {
+  // Variações de Jovens
   "young-adults": "Jovens (18-35)",
-  adults: "Adultos (35+)",
-  seniors: "Seniores (60+)",
-  mixed: "Misto",
+  "young_adults": "Jovens (18-35)", 
   "Young Adults": "Jovens (18-35)",
+  
+  // Variações de Adultos
+  "adults": "Adultos (35+)",
   "Adults": "Adultos (35+)",
+  
+  // Variações de Seniores
+  "seniors": "Seniores (60+)",
   "Seniors": "Seniores (60+)",
+  
+  // Outros
+  "mixed": "Misto",
+  "Mixed": "Misto",
 };
 
 const targetAudienceLabels = {
+  // Variações de Qualquer pessoa
   "any": "Qualquer pessoa",
-  "families": "Famílias",
-  "young-adults": "Jovens",
-  "adults": "Adultos",
-  "seniors": "Seniores",
   "Any": "Qualquer pessoa",
+
+  // Variações de Famílias
+  "families": "Famílias",
   "Families": "Famílias",
+
+  // Variações de Jovens
+  "young-adults": "Jovens",
+  "young_adults": "Jovens",
   "Young Adults": "Jovens",
+
+  // Variações de Adultos
+  "adults": "Adultos",
+  "Adults": "Adultos",
+
+  // Variações de Seniores
+  "seniors": "Seniores",
   "Seniors": "Seniores",
-  "Mixed": "Misto",
 };
 
 const WEEKDAYS_PT = [
@@ -64,12 +82,28 @@ export default function EventCard({
 }) {
   const [isInterested, setIsInterested] = useState(false);
   
-  // Verificação de segurança: Se não tem evento, não renderiza nada
   if (!event) return null;
 
   const handleInterest = () => {
     setIsInterested(true);
     onInterest?.(event.id);
+  };
+
+
+  const getLabel = (value, map) => {
+    if (!value) return null;
+
+    let key = value;
+
+    if (Array.isArray(value)) {
+        key = value[0];
+    }
+
+    if (typeof key === 'string') {
+        key = key.replace(/[\[\]"']/g, "").trim();
+    }
+
+    return map[key] || map[key.toLowerCase()] || key;
   };
 
   const spotsLeft =
@@ -79,16 +113,10 @@ export default function EventCard({
           : event.max_guests)
       : 0;
 
-  const ageLabel = hostAgeGroupLabels[event.host_age_group] || event.host_age_group;
-  const audienceLabel = targetAudienceLabels[event.target_audience] || event.target_audience;
+  const ageLabel = getLabel(event.host_age_group, hostAgeGroupLabels);
+  const audienceLabel = getLabel(event.target_audience, targetAudienceLabels);
 
-  // 👇 LÓGICA DE BLIND: Na tela de descobrir, sempre ocultamos o nome do anfitrião
-  // O usuário ainda não foi aceito, então vê apenas "Anfitrião da Comunidade"
-  // const hostDisplayName = event.host?.username || event.host?.full_name; // REMOVIDO
   const hostDisplayName = "Anfitrião da Comunidade";
-  
-  // Não mostramos o selo de verificado específico do usuário, pois não sabemos quem é.
-  // Mas podemos mostrar um selo genérico ou ocultar. Vamos ocultar por enquanto para manter o mistério.
   const hostRole = null; 
 
   return (
@@ -98,14 +126,12 @@ export default function EventCard({
           <View style={{ flex: 1, paddingRight: 8 }}> 
             <CardTitle style={styles.cardTitle} numberOfLines={2}>{event.title}</CardTitle>
             
-            {/* 👇 LINHA DO ANFITRIÃO (OCULTO) */}
             <View style={styles.hostRow}>
                 <View style={styles.hostNameContainer}>
                     <CardDescription numberOfLines={1}>
                         Por {hostDisplayName}
                     </CardDescription>
                 </View>
-                {/* Ocultamos o selo de verificado específico aqui */}
             </View>
             
           </View>
@@ -143,7 +169,6 @@ export default function EventCard({
             <View style={styles.infoRow}>
               <Icon name="account-group-outline" size={16} />
               <Text style={styles.infoText}>
-                {/* 👇 CORREÇÃO AQUI: Verifica se é maior que 0 */}
                 {event.max_guests > 0 
                   ? `Até ${event.max_guests} convidados` 
                   : "Sem limites de convidados"}

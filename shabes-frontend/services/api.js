@@ -3,11 +3,11 @@ import { supabase } from './supabase';
 
 // IP do Emulador Android (10.0.2.2)
 // Se usar dispositivo físico, troque pelo seu IP (ex: http://192.168.100.194:3000/api)
-const API_URL = 'http://192.168.100.194:3000/api';
+const API_URL = 'https://aqtemshabes.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000, // 30 segundos de tolerância
+  timeout: 60000, // 60 segundos de tolerância
   headers: {
     'Content-Type': 'application/json',
   },

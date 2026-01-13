@@ -31,19 +31,56 @@ import { getEventById, createMatch, getDependents, getMatchById, updateMatchStat
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
 
-// Mapas de Tradução
+// 👇 MAPAS DE TRADUÇÃO ATUALIZADOS E COMPLETOS
 const targetAudienceLabels = {
-  any: "Qualquer pessoa",
-  families: "Famílias",
+  // Variações de Qualquer pessoa
+  "any": "Qualquer pessoa",
+  "Any": "Qualquer pessoa",
+
+  // Variações de Famílias
+  "families": "Famílias",
+  "Families": "Famílias",
+
+  // Variações de Jovens
   "young-adults": "Jovens",
-  seniors: "Seniores",
+  "young_adults": "Jovens",
+  "Young Adults": "Jovens",
+
+  // Variações de Adultos
+  "adults": "Adultos",
+  "Adults": "Adultos",
+
+  // Variações de Seniores
+  "seniors": "Seniores",
+  "Seniors": "Seniores",
 };
+
 const mealTypeLabels = {
   almoço: "Almoço",
   jantar: "Jantar",
+  lunch: "Almoço",
+  dinner: "Jantar",
 };
 
-const getLabel = (value, labels) => labels[value] || value;
+// 👇 NOVA FUNÇÃO getLabel BLINDADA (Igual a que funcionou no outro arquivo)
+const getLabel = (value, map) => {
+    if (!value) return null;
+
+    let key = value;
+
+    // 1. Se for array real do JS, pega o primeiro item
+    if (Array.isArray(value)) {
+        key = value[0];
+    }
+
+    // 2. Se for string, remove caracteres de array JSON ([" "])
+    if (typeof key === 'string') {
+        key = key.replace(/[\[\]"']/g, "").trim();
+    }
+
+    // 3. Tenta buscar no mapa (Exato ou Minúsculo)
+    return map[key] || map[key.toLowerCase()] || key;
+};
 
 const calculateAge = (birthDateString) => {
     if (!birthDateString) return '?';
@@ -319,6 +356,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 {event.meal_type && (
                   <View style={styles.detailItem}>
                     <Icon name="silverware-fork-knife" color="#F59E0B" size={20} />
+                    {/* 👇 USO DA FUNÇÃO getLabel BLINDADA */}
                     <Text>{getLabel(event.meal_type, mealTypeLabels)}</Text>
                   </View>
                 )}
@@ -343,6 +381,7 @@ export default function EventDetailScreen({ route, navigation }) {
               
               <View style={styles.tagsContainer}>
                 {hostAgeGroup && (<Badge variant="outline">Anfitriões: {hostAgeGroup}</Badge>)}
+                {/* 👇 USO DA FUNÇÃO getLabel BLINDADA NA FAIXA ETÁRIA */}
                 {event.target_audience && (<Badge variant="outline">Público: {getLabel(event.target_audience, targetAudienceLabels)}</Badge>)}
                 {event.languages?.map((lang) => (<Badge key={lang} variant="outline">{lang}</Badge>))}
               </View>
@@ -377,9 +416,9 @@ export default function EventDetailScreen({ route, navigation }) {
                   {/* 👇 VALIDAÇÃO DO CONVIDADO (AUTOR DO PEDIDO) ADICIONADA ABAIXO 👇 */}
                    {isUserHost && matchDetails.guest?.validator_organization && (
                       <View style={styles.validatorBadgeSmall}>
-                         <Text style={styles.validatorTextSmall}>
+                          <Text style={styles.validatorTextSmall}>
                             Validado por: <Text style={{fontWeight: 'bold'}}>{matchDetails.guest.validator_organization}</Text>
-                         </Text>
+                          </Text>
                       </View>
                   )}
                   {/* 👆 FIM DA ADIÇÃO 👆 */}
