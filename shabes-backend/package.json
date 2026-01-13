@@ -15,8 +15,10 @@
     "@prisma/client": "5.17.0",
     "@supabase/auth-helpers-nextjs": "0.10.0",
     "@supabase/supabase-js": "2.43.0",
+    "axios": "^1.7.2",
     "bcryptjs": "2.4.3",
     "clsx": "^2.1.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "next": "14.2.28",
     "next-auth": "4.24.7",
@@ -38,4 +40,4 @@
     "ts-node": "10.9.2",
     "typescript": "5.5.2"
   }
-} 
+}
