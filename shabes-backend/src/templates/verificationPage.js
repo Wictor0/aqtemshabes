@@ -1,6 +1,6 @@
 /**
  * Este arquivo gera o HTML para a página de verificação de e-mail.
- * Ajustado para SEMPRE mostrar sucesso e tentar abrir o app automaticamente.
+ * Ajustado para SEMPRE mostrar sucesso e permitir o uso de uma logo hospedada.
  */
 
 // @ts-check
@@ -11,8 +11,9 @@
  * @returns {string}
  */
 export const getVerificationHtml = (status) => {
-  // Forçamos o estado de sucesso independentemente do status técnico.
-  // Isso resolve o problema de links que o servidor de e-mail "consome" antes do usuário.
+  // CONFIGURAÇÃO DA LOGO: Substitua o URL abaixo pelo URL obtido (Opção 1 ou 2)
+  const LOGO_URL = ""; // Ex: "https://aqtemshabes.onrender.com/logo.png"
+  
   const title = 'E-mail Verificado!';
   const message = 'O seu e-mail foi processado com sucesso. Agora já pode aceder a todas as funcionalidades do Aquitemshabes.';
   const color = '#10B981'; // Verde esmeralda (Sucesso)
@@ -43,6 +44,13 @@ export const getVerificationHtml = (status) => {
                 text-align: center;
                 max-width: 420px;
                 width: 90%;
+            }
+            .logo-container {
+                margin-bottom: 24px;
+            }
+            .logo-img {
+                max-width: 120px;
+                height: auto;
             }
             .icon-circle {
                 width: 80px;
@@ -82,6 +90,11 @@ export const getVerificationHtml = (status) => {
     </head>
     <body>
         <div class="card">
+            ${LOGO_URL 
+              ? `<div class="logo-container"><img src="${LOGO_URL}" alt="Aquitemshabes" class="logo-img" onerror="this.style.display='none'"></div>` 
+              : ''
+            }
+            
             <div class="icon-circle">${icon}</div>
             <h1>${title}</h1>
             <p>${message}</p>
@@ -90,14 +103,14 @@ export const getVerificationHtml = (status) => {
         </div>
 
         <script>
-            // Tentativa de redirecionamento automático assim que a página carrega
             window.onload = function() {
                 const appScheme = "aquitemshabes://";
                 
-                // Tenta abrir o app
-                window.location.href = appScheme;
+                // Tenta abrir o app automaticamente após 1 segundo
+                setTimeout(() => {
+                    window.location.href = appScheme;
+                }, 1000);
                 
-                // Se o usuário clicar manualmente, reforçamos a tentativa
                 document.getElementById('openAppBtn').addEventListener('click', function(e) {
                     window.location.href = appScheme;
                 });
