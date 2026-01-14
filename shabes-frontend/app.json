@@ -2,6 +2,7 @@
   "expo": {
     "name": "AquiTemShabes",
     "slug": "aqtemshabes",
+    "scheme": "aquitemshabes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/Logo_AQUITEM.png",
