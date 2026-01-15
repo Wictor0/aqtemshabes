@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 
 /**
  * Rota para criação de novos usuários (Signup)
- * Esta rota deve ser POST e receber os dados do formulário mobile
+ * Esta rota deve ser POST e receber os dados do formulário mobile, incluindo a foto em Base64.
  */
 export async function POST(request) {
   try {
@@ -20,37 +20,38 @@ export async function POST(request) {
       preferredEndTime, 
       dietary, 
       notes, 
-      inviteCode 
+      inviteCode,
+      image // Recebemos a string Base64 da imagem aqui
     } = body;
 
     // Inicialização do cliente Supabase com suporte a cookies do Next.js
     const supabase = createRouteHandlerClient({ cookies });
 
     // IMPORTANTE: Esta URL deve estar EXATAMENTE igual no Dashboard do Supabase (Redirect URLs)
-    // Certifique-se de que não há barras extras ou espaços.
     const SITE_URL = "https://aqtemshabes.onrender.com";
     const redirectTo = `${SITE_URL}/api/auth/confirm`;
 
     console.log(`[AUTH-SIGNUP] Iniciando cadastro para: ${email}`);
-    console.log(`[AUTH-SIGNUP] Redirecionamento configurado para: ${redirectTo}`);
+    console.log(`[AUTH-SIGNUP] Imagem presente: ${image ? "Sim" : "Não"}`);
 
     // Realizamos o SignUp no Supabase
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(), // Normalização para evitar erros de digitação
+      email: email.trim().toLowerCase(), // Normalização para evitar erros de login futuros
       password,
       options: {
         emailRedirectTo: redirectTo,
-        // Guardamos todas as preferências do utilizador no user_metadata
+        // Guardamos todas as preferências e a imagem do usuário no user_metadata
         data: { 
           name, 
           phone, 
           address, 
-          maxDistance: Number(maxDistance), // Garantimos que é um número
+          maxDistance: Number(maxDistance || 15), 
           preferredStartTime, 
           preferredEndTime, 
           dietary, 
           notes, 
-          invite_code: inviteCode 
+          invite_code: inviteCode,
+          image: image || null // A imagem é salva aqui para ser recuperada no perfil
         },
       },
     });
@@ -60,7 +61,7 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // Retornamos sucesso. O utilizador deve agora clicar no link do e-mail.
+    // Retornamos sucesso. O usuário receberá o e-mail de confirmação estilizado.
     return NextResponse.json({
       message: 'Cadastro realizado com sucesso! Verifique o seu e-mail para confirmar.',
       user: data.user,
