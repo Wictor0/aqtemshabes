@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Switch } from "react-native";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Text, Switch, Image } from "react-native";
+import * as ImagePicker from 'expo-image-picker'; 
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Label } from "../ui/Label";
@@ -15,8 +16,9 @@ import { Textarea } from "../ui/Textarea";
 import { toast } from "../../hooks/use-toast";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import Icon from "../ui/Icon";
+import { signUp } from "../../services/api";
 
-// Options for Select components
+// Opções para os componentes Select
 const distanceOptions = [
   { label: "5 km", value: "5" },
   { label: "10 km", value: "10" },
@@ -32,16 +34,11 @@ const timeOptions = [
   { label: "20:00", value: "20:00" },
   { label: "21:00", value: "21:00" },
 ];
-const dietaryOptions = [
-  { label: "Kosher", value: "kosher" },
-  { label: "Tradicional", value: "traditional" },
-  { label: "Vegetariano", value: "vegetarian" },
-  { label: "Qualquer", value: "any" },
-];
 
-export default function SignUpForm({ onSubmit, isLoading, onBack }) {
+export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
   const [step, setStep] = useState(1);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -54,10 +51,30 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
     preferredEndTime: "22:00",
     dietary: "kosher",
     notes: "",
+    image: null, 
   });
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Função para selecionar a imagem da galeria com crop quadrado
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      return toast({ type: "error", title: "Permissão negada", description: "Precisamos de acesso às fotos." });
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.4, // Qualidade reduzida para não exceder limites do Supabase
+    });
+
+    if (!result.canceled) {
+      handleInputChange('image', result.assets[0].uri);
+    }
   };
 
   const handleStep1Submit = () => {
@@ -76,22 +93,42 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
     setStep(2);
   };
 
-  const handleFinalSubmit = () => {
-    // Calls the real submit function from SignUpScreen
-    onSubmit({
-      email: formData.email,
-      password: formData.password,
-      metadata: {
-        full_name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        max_distance: formData.maxDistance,
-        preferred_start_time: formData.preferredStartTime,
-        preferred_end_time: formData.preferredEndTime,
-        dietary_preference: formData.dietary,
-        notes: formData.notes,
-      },
-    });
+  const handleFinalSubmit = async () => {
+    setIsLoading(true);
+    try {
+      // Chamada real para o serviço de API que lida com conversão Base64 e usernames
+      await signUp({
+        ...formData,
+        inviteCode,
+        metadata: {
+          full_name: formData.name,
+          phone: formData.phone,
+          address: formData.address,
+          max_distance: formData.maxDistance,
+          preferred_start_time: formData.preferredStartTime,
+          preferred_end_time: formData.preferredEndTime,
+          dietary_preference: formData.dietary,
+          notes: formData.notes,
+        },
+      });
+
+      setIsLoading(false);
+      toast({ 
+        type: "success", 
+        title: "Cadastro solicitado!", 
+        description: "Verifique o seu e-mail para confirmar a conta." 
+      });
+      
+      if (onSignUpComplete) onSignUpComplete();
+    } catch (error) {
+      setIsLoading(false);
+      console.error("[SIGNUP] Erro no envio:", error.response?.data || error.message);
+      toast({ 
+        type: "error", 
+        title: "Erro no cadastro", 
+        description: error.response?.data?.error || "Tente novamente mais tarde." 
+      });
+    }
   };
 
   return (
@@ -117,6 +154,19 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
       <CardContent>
         {step === 1 ? (
           <View style={styles.formContainer}>
+            
+            {/* UI de seleção de imagem */}
+            <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
+              {formData.image ? (
+                <Image source={{ uri: formData.image }} style={styles.avatar} />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Icon name="camera-plus-outline" size={32} color="#9CA3AF" />
+                  <Text style={styles.imageText}>Foto de Perfil</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             <View style={styles.formSection}>
               <Label>Nome Completo</Label>
               <Input
@@ -162,7 +212,7 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
             </Button>
           </View>
         ) : (
-          <ScrollView>
+          <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.formSection}>
               <Label>Endereço (Bairro, Cidade)</Label>
               <Input
@@ -195,21 +245,23 @@ export default function SignUpForm({ onSubmit, isLoading, onBack }) {
                 onChangeText={(v) => handleInputChange("notes", v)}
               />
             </View>
-            <Switch
-                  trackColor={{ false: "#E5E7EB", true: "#81b0ff" }}
-                  thumbColor={agreedToTerms ? "#4F46E5" : "#f4f3f4"}
-                  ios_backgroundColor="#E5E7EB"
-                  onValueChange={setAgreedToTerms}
-                  value={agreedToTerms}
-                />
-                <Text style={styles.consentText}>
-                  Eu li e concordo com os termos de segurança e responsabilidade
-                  da comunidade.
-                </Text>
+            <View style={styles.termsRow}>
+              <Switch
+                trackColor={{ false: "#E5E7EB", true: "#81b0ff" }}
+                thumbColor={agreedToTerms ? "#4F46E5" : "#f4f3f4"}
+                ios_backgroundColor="#E5E7EB"
+                onValueChange={setAgreedToTerms}
+                value={agreedToTerms}
+              />
+              <Text style={styles.consentText}>
+                Eu li e concordo com os termos de segurança e responsabilidade da comunidade.
+              </Text>
+            </View>
             <Button
               onPress={handleFinalSubmit}
               disabled={isLoading || !agreedToTerms}
               style={{ marginTop: 16 }}
+              variant="shabbat"
             >
               {isLoading ? (
                 <LoadingSpinner size="small" color="#FFFFFF" />
@@ -229,4 +281,10 @@ const styles = StyleSheet.create({
   backButton: { padding: 8 },
   formContainer: { gap: 12 },
   formSection: { gap: 6, marginBottom: 8 },
+  imagePicker: { alignSelf: 'center', marginBottom: 15 },
+  imagePlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', borderStyle: 'dashed' },
+  avatar: { width: 90, height: 90, borderRadius: 45 },
+  imageText: { fontSize: 10, color: '#9CA3AF', marginTop: 4 },
+  termsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 15 },
+  consentText: { flex: 1, fontSize: 12, color: "#6B7280" }
 });
