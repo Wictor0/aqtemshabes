@@ -3,65 +3,47 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 /**
- * Rota para criação de novos usuários (Signup)
- * Esta rota foi atualizada para ser robusta e aceitar dados em diferentes formatos (flat ou nested metadata).
+ * Rota de Cadastro atualizada para garantir persistência de metadados (incluindo imagem)
  */
 export async function POST(request) {
   try {
     const body = await request.json();
     
-    // Extraímos o objeto metadata caso o frontend o esteja a enviar (comum em versões anteriores)
+    // Extração inteligente de dados (aceita metadados aninhados ou raiz)
     const meta = body.metadata || {};
-
-    // Mapeamento inteligente: procura o dado na raiz ou dentro do metadata
-    const email = body.email || meta.email;
+    const email = (body.email || meta.email)?.trim().toLowerCase();
     const password = body.password;
     const image = body.image || meta.image || null;
     
-    // Captura de dados de perfil com nomes alternativos (name vs full_name)
-    const name = body.name || meta.full_name || meta.name;
-    const phone = body.phone || meta.phone;
-    const address = body.address || meta.address;
-    const maxDistance = body.maxDistance || meta.max_distance || meta.maxDistance || 15;
-    const preferredStartTime = body.preferredStartTime || meta.preferred_start_time || "19:00";
-    const preferredEndTime = body.preferredEndTime || meta.preferred_end_time || "22:00";
-    const dietary = body.dietary || meta.dietary_preference || meta.dietary || "kosher";
-    const notes = body.notes || meta.notes;
-    const inviteCode = body.inviteCode || meta.invite_code || meta.inviteCode;
+    const userData = {
+      name: body.name || meta.full_name || meta.name,
+      phone: body.phone || meta.phone,
+      address: body.address || meta.address,
+      maxDistance: Number(body.maxDistance || meta.max_distance || 15),
+      preferredStartTime: body.preferredStartTime || meta.preferred_start_time || "19:00",
+      preferredEndTime: body.preferredEndTime || meta.preferred_end_time || "22:00",
+      dietary: body.dietary || meta.dietary_preference || "kosher",
+      notes: body.notes || meta.notes,
+      invite_code: body.inviteCode || meta.invite_code,
+      image: image // A string Base64 da foto
+    };
 
-    // Inicialização do cliente Supabase
     const supabase = createRouteHandlerClient({ cookies });
 
     const SITE_URL = "https://aqtemshabes.onrender.com";
     const redirectTo = `${SITE_URL}/api/auth/confirm`;
 
-    console.log(`[AUTH-SIGNUP] Tentando cadastro para: ${email}`);
-    console.log(`[AUTH-SIGNUP] Imagem recebida: ${image ? "Sim (Base64)" : "Não"}`);
+    console.log(`[AUTH-SIGNUP] Iniciando cadastro para: ${email}`);
+    if (image) console.log("[AUTH-SIGNUP] Foto de perfil detectada no payload.");
 
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
-    }
-
-    // Realizamos o SignUp no Supabase
+    // Registro no Supabase Auth
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
+      email,
       password,
       options: {
         emailRedirectTo: redirectTo,
-        // Guardamos TODA a informação no user_metadata
-        // É daqui que o seu ProfileScreen deve ler os dados no primeiro login
-        data: { 
-          name, 
-          phone, 
-          address, 
-          maxDistance: Number(maxDistance), 
-          preferredStartTime, 
-          preferredEndTime, 
-          dietary, 
-          notes, 
-          invite_code: inviteCode,
-          image: image // A imagem Base64 é salva aqui
-        },
+        // É CRUCIAL que a imagem esteja aqui no data
+        data: userData,
       },
     });
 
@@ -70,13 +52,16 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    // Nota técnica: Se você usa um Trigger no Supabase para criar o perfil na tabela pública,
+    // certifique-se de que o SQL do trigger inclua o campo 'image' vindo do raw_user_meta_data.
+
     return NextResponse.json({
-      message: 'Cadastro realizado com sucesso! Verifique o seu e-mail para confirmar.',
+      message: 'Cadastro realizado com sucesso! Verifique o seu e-mail.',
       user: data.user,
     });
 
   } catch (e) {
-    console.error('[AUTH-SIGNUP] Erro crítico no servidor:', e);
+    console.error('[AUTH-SIGNUP] Erro crítico:', e);
     return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
   }
 }
