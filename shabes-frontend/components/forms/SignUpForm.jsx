@@ -34,6 +34,12 @@ const timeOptions = [
   { label: "20:00", value: "20:00" },
   { label: "21:00", value: "21:00" },
 ];
+const dietaryOptions = [
+  { label: "Kosher", value: "kosher" },
+  { label: "Tradicional", value: "traditional" },
+  { label: "Vegetariano", value: "vegetarian" },
+  { label: "Qualquer", value: "any" },
+];
 
 export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
   const [step, setStep] = useState(1);
@@ -50,6 +56,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
     preferredStartTime: "19:00",
     preferredEndTime: "22:00",
     dietary: "kosher",
+    dietaryRestrictions: "", // Novo campo adicionado
     notes: "",
     image: null, 
   });
@@ -68,8 +75,8 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.4, // Qualidade reduzida para não exceder limites do Supabase
+      aspect: [1, 1], // Força o crop 1:1
+      quality: 0.3, // Reduzido ligeiramente para garantir que o Base64 não quebre o limite do Supabase
     });
 
     if (!result.canceled) {
@@ -100,6 +107,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
       await signUp({
         ...formData,
         inviteCode,
+        // Sincronizando o mapeamento para o que o backend e o Trigger SQL esperam
         metadata: {
           full_name: formData.name,
           phone: formData.phone,
@@ -108,6 +116,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
           preferred_start_time: formData.preferredStartTime,
           preferred_end_time: formData.preferredEndTime,
           dietary_preference: formData.dietary,
+          dietaryRestrictions: formData.dietaryRestrictions, // Enviando as restrições
           notes: formData.notes,
         },
       });
@@ -163,6 +172,11 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
                 <View style={styles.imagePlaceholder}>
                   <Icon name="camera-plus-outline" size={32} color="#9CA3AF" />
                   <Text style={styles.imageText}>Foto de Perfil</Text>
+                </View>
+              )}
+              {formData.image && (
+                <View style={styles.editBadge}>
+                  <Icon name="pencil" size={14} color="white" />
                 </View>
               )}
             </TouchableOpacity>
@@ -229,6 +243,22 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               />
             </View>
             <View style={styles.formSection}>
+              <Label>Preferência Alimentar</Label>
+              <Select
+                options={dietaryOptions}
+                selectedValue={formData.dietary}
+                onValueChange={(v) => handleInputChange("dietary", v)}
+              />
+            </View>
+            <View style={styles.formSection}>
+              <Label>Restrições Específicas (Alergias, etc.)</Label>
+              <Input
+                value={formData.dietaryRestrictions}
+                onChangeText={(v) => handleInputChange("dietaryRestrictions", v)}
+                placeholder="Ex: Alérgico a nozes, intolerante a lactose..."
+              />
+            </View>
+            <View style={styles.formSection}>
               <Label>Início Preferido</Label>
               <Select
                 options={timeOptions}
@@ -239,10 +269,11 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               />
             </View>
             <View style={styles.formSection}>
-              <Label>Observações</Label>
+              <Label>Observações Adicionais</Label>
               <Textarea
                 value={formData.notes}
                 onChangeText={(v) => handleInputChange("notes", v)}
+                placeholder="Algo mais que queira nos contar?"
               />
             </View>
             <View style={styles.termsRow}>
@@ -281,9 +312,10 @@ const styles = StyleSheet.create({
   backButton: { padding: 8 },
   formContainer: { gap: 12 },
   formSection: { gap: 6, marginBottom: 8 },
-  imagePicker: { alignSelf: 'center', marginBottom: 15 },
+  imagePicker: { alignSelf: 'center', marginBottom: 15, position: 'relative' },
   imagePlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', borderStyle: 'dashed' },
   avatar: { width: 90, height: 90, borderRadius: 45 },
+  editBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#4F46E5', width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white' },
   imageText: { fontSize: 10, color: '#9CA3AF', marginTop: 4 },
   termsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 15 },
   consentText: { flex: 1, fontSize: 12, color: "#6B7280" }
