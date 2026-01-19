@@ -3,37 +3,37 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 /**
- * Rota de Cadastro atualizada para garantir persistência de metadados (incluindo imagem)
- * Sincronizada com o Trigger SQL public.handle_new_user_final()
+ * Rota de Cadastro robusta.
+ * Garante que a imagem seja mapeada para 'avatar_url' (o que o seu Trigger SQL exige).
  */
 export async function POST(request) {
   try {
     const body = await request.json();
     
-    // Extração inteligente de dados (aceita metadados aninhados ou raiz)
+    // Extraímos os metadados (suporta formato plano ou aninhado)
     const meta = body.metadata || {};
     const email = (body.email || meta.email)?.trim().toLowerCase();
     const password = body.password;
     
-    // O Trigger espera 'avatar_url', então mapeamos o campo 'image' para este nome
-    const image = body.image || meta.image || meta.avatar_url || null;
+    // CAPTURA DA IMAGEM: O Trigger SQL espera a chave 'avatar_url'
+    const image = body.image || meta.image || body.avatar_url || meta.avatar_url || null;
     
-    // Mapeamento de dados seguindo exatamente o que o Trigger handle_new_user_final() espera
+    // Montamos o objeto de dados que irá para o raw_user_meta_data do Supabase Auth
     const userData = {
-      name: body.name || meta.full_name || meta.name,
-      phone: body.phone || meta.phone,
-      address: body.address || meta.address,
+      // Campos que o Trigger handle_new_user_final() utiliza:
+      name: body.name || meta.full_name || meta.name || 'Novo Usuário',
+      phone: body.phone || meta.phone || '',
+      address: body.address || meta.address || '',
       maxDistance: Number(body.maxDistance || meta.max_distance || 15),
       preferredStartTime: body.preferredStartTime || meta.preferred_start_time || "19:00",
       preferredEndTime: body.preferredEndTime || meta.preferred_end_time || "22:00",
       dietary: body.dietary || meta.dietary_preference || "kosher",
-      dietaryRestrictions: body.dietaryRestrictions || meta.dietaryRestrictions || "",
-      notes: body.notes || meta.notes,
-      invite_code: body.inviteCode || meta.invite_code,
+      notes: body.notes || meta.notes || "",
+      invite_code: body.inviteCode || meta.invite_code || "",
       
-      // Campos essenciais para o Trigger SQL processar nascimento e avatar
-      avatar_url: image, // 👈 Alinhado com o Trigger: raw_meta->>'avatar_url'
-      birth_date: body.birth_date || meta.birth_date || body.birthDate || meta.birthDate || null, // 👈 Para o cálculo de age_group
+      // --- CHAVES CRÍTICAS PARA O TRIGGER SQL ---
+      avatar_url: image, // 👈 Se esta chave não for EXATAMENTE 'avatar_url', a foto não vai para o perfil
+      birth_date: body.birth_date || meta.birth_date || body.birthDate || null, // Para o cálculo de idade
       validatorOrganization: body.validatorOrganization || meta.validatorOrganization || "Qualquer"
     };
 
@@ -42,21 +42,18 @@ export async function POST(request) {
     const SITE_URL = "https://aqtemshabes.onrender.com";
     const redirectTo = `${SITE_URL}/api/auth/confirm`;
 
-    console.log(`[AUTH-SIGNUP] Iniciando cadastro para: ${email}`);
-    if (image) console.log("[AUTH-SIGNUP] Foto de perfil detectada e mapeada para avatar_url.");
-
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
+    console.log(`[AUTH-SIGNUP] Processando cadastro: ${email}`);
+    if (image) {
+      console.log(`[AUTH-SIGNUP] Foto de perfil enviada ao Supabase Auth (Meta).`);
     }
 
-    // Registro no Supabase Auth
+    // Realizamos o SignUp no Supabase
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectTo,
-        // Enviamos o objeto formatado para o raw_user_meta_data do auth.users
-        data: userData,
+        data: userData, // Aqui o Supabase guarda tudo no campo raw_user_meta_data
       },
     });
 
@@ -66,12 +63,12 @@ export async function POST(request) {
     }
 
     return NextResponse.json({
-      message: 'Cadastro realizado com sucesso! Verifique o seu e-mail.',
+      message: 'Cadastro realizado com sucesso! Verifique seu e-mail.',
       user: data.user,
     });
 
   } catch (e) {
-    console.error('[AUTH-SIGNUP] Erro crítico:', e);
+    console.error('[AUTH-SIGNUP] Erro inesperado:', e);
     return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
   }
 }
