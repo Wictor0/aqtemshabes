@@ -10,17 +10,17 @@ export async function POST(request) {
   try {
     const body = await request.json();
     
-    // Extraímos os metadados (suporta formato plano ou aninhado)
+    // Extraímos os metadados (suporta formato plano ou aninhado via objeto 'metadata')
     const meta = body.metadata || {};
     const email = (body.email || meta.email)?.trim().toLowerCase();
     const password = body.password;
     
-    // CAPTURA DA IMAGEM: O Trigger SQL espera a chave 'avatar_url'
+    // CAPTURA DA IMAGEM: Procuramos por 'image' ou 'avatar_url' em qualquer nível do JSON
     const image = body.image || meta.image || body.avatar_url || meta.avatar_url || null;
     
     // Montamos o objeto de dados que irá para o raw_user_meta_data do Supabase Auth
     const userData = {
-      // Campos que o Trigger handle_new_user_final() utiliza:
+      // Campos básicos mapeados para o Trigger handle_new_user_final()
       name: body.name || meta.full_name || meta.name || 'Novo Usuário',
       phone: body.phone || meta.phone || '',
       address: body.address || meta.address || '',
@@ -28,12 +28,15 @@ export async function POST(request) {
       preferredStartTime: body.preferredStartTime || meta.preferred_start_time || "19:00",
       preferredEndTime: body.preferredEndTime || meta.preferred_end_time || "22:00",
       dietary: body.dietary || meta.dietary_preference || "kosher",
+      dietaryRestrictions: body.dietaryRestrictions || meta.dietaryRestrictions || "",
       notes: body.notes || meta.notes || "",
       invite_code: body.inviteCode || meta.invite_code || "",
       
       // --- CHAVES CRÍTICAS PARA O TRIGGER SQL ---
-      avatar_url: image, // 👈 Se esta chave não for EXATAMENTE 'avatar_url', a foto não vai para o perfil
-      birth_date: body.birth_date || meta.birth_date || body.birthDate || null, // Para o cálculo de idade
+      // O seu Trigger SQL usa: raw_meta->>'avatar_url'
+      avatar_url: image, 
+      // O seu Trigger SQL usa: raw_meta->>'birth_date'
+      birth_date: body.birth_date || meta.birth_date || body.birthDate || meta.birthDate || null,
       validatorOrganization: body.validatorOrganization || meta.validatorOrganization || "Qualquer"
     };
 
@@ -43,8 +46,20 @@ export async function POST(request) {
     const redirectTo = `${SITE_URL}/api/auth/confirm`;
 
     console.log(`[AUTH-SIGNUP] Processando cadastro: ${email}`);
+    
     if (image) {
-      console.log(`[AUTH-SIGNUP] Foto de perfil enviada ao Supabase Auth (Meta).`);
+      // Log do tamanho da string para verificar se excede limites do Supabase (Metadata)
+      console.log(`[AUTH-SIGNUP] Foto detectada. Tamanho da string: ${image.length} caracteres.`);
+      
+      if (image.length > 50000) {
+        console.warn("[AUTH-SIGNUP] AVISO: A imagem é muito grande e pode ser rejeitada pelo metadata do Supabase Auth.");
+      }
+    } else {
+      console.log("[AUTH-SIGNUP] Nenhuma foto detectada no corpo da requisição.");
+    }
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
 
     // Realizamos o SignUp no Supabase
@@ -53,17 +68,17 @@ export async function POST(request) {
       password,
       options: {
         emailRedirectTo: redirectTo,
-        data: userData, // Aqui o Supabase guarda tudo no campo raw_user_meta_data
+        data: userData, // O Supabase guarda isto no campo 'raw_user_meta_data'
       },
     });
 
     if (error) {
-      console.error('[AUTH-SIGNUP] Erro Supabase:', error.message);
+      console.error('[AUTH-SIGNUP] Erro Supabase Auth:', error.message);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json({
-      message: 'Cadastro realizado com sucesso! Verifique seu e-mail.',
+      message: 'Cadastro realizado com sucesso! Verifique o seu e-mail.',
       user: data.user,
     });
 
