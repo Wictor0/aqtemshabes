@@ -51,12 +51,13 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
     phone: "",
     password: "",
     confirmPassword: "",
+    birthDate: "", // Campo adicionado: Essencial para o Trigger SQL
     maxDistance: "15",
     address: "",
     preferredStartTime: "19:00",
     preferredEndTime: "22:00",
     dietary: "kosher",
-    dietaryRestrictions: "", // Novo campo adicionado
+    dietaryRestrictions: "", 
     notes: "",
     image: null, 
   });
@@ -76,7 +77,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1], // Força o crop 1:1
-      quality: 0.3, // Reduzido ligeiramente para garantir que o Base64 não quebre o limite do Supabase
+      quality: 0.3, // Qualidade reduzida para otimizar o envio do Base64
     });
 
     if (!result.canceled) {
@@ -101,22 +102,31 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
   };
 
   const handleFinalSubmit = async () => {
+    // Validação da data de nascimento (exigida pelo banco)
+    if (!formData.birthDate) {
+      return toast({ type: "error", title: "Data de Nascimento", description: "A data de nascimento é obrigatória para o cadastro." });
+    }
+
     setIsLoading(true);
     try {
-      // Chamada real para o serviço de API que lida com conversão Base64 e usernames
+      /**
+       * Enviamos os dados de forma que o serviço api.js e o backend os processem corretamente.
+       * A imagem será convertida para Base64 no api.js e mapeada para 'avatar_url'.
+       */
       await signUp({
         ...formData,
         inviteCode,
-        // Sincronizando o mapeamento para o que o backend e o Trigger SQL esperam
+        // Incluímos explicitamente os campos no metadata para o Supabase Auth
         metadata: {
           full_name: formData.name,
           phone: formData.phone,
           address: formData.address,
+          birth_date: formData.birthDate, // Importante para o cálculo de age_group no Trigger
           max_distance: formData.maxDistance,
           preferred_start_time: formData.preferredStartTime,
           preferred_end_time: formData.preferredEndTime,
           dietary_preference: formData.dietary,
-          dietaryRestrictions: formData.dietaryRestrictions, // Enviando as restrições
+          dietaryRestrictions: formData.dietaryRestrictions, // Campo de restrições
           notes: formData.notes,
         },
       });
@@ -135,7 +145,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
       toast({ 
         type: "error", 
         title: "Erro no cadastro", 
-        description: error.response?.data?.error || "Tente novamente mais tarde." 
+        description: error.response?.data?.error || "Verifique a sua ligação e tente novamente." 
       });
     }
   };
@@ -154,8 +164,8 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
             <CardTitle>{step === 1 ? "Criar Conta" : "Preferências"}</CardTitle>
             <CardDescription>
               {step === 1
-                ? "Preencha seus dados pessoais"
-                : "Configure suas preferências"}
+                ? "Preencha os seus dados pessoais"
+                : "Configure as suas preferências"}
             </CardDescription>
           </View>
         </View>
@@ -186,6 +196,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.name}
                 onChangeText={(v) => handleInputChange("name", v)}
+                placeholder="Ex: João Silva"
               />
             </View>
             <View style={styles.formSection}>
@@ -195,14 +206,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
                 onChangeText={(v) => handleInputChange("email", v)}
                 keyboardType="email-address"
                 autoCapitalize="none"
-              />
-            </View>
-            <View style={styles.formSection}>
-              <Label>Telefone</Label>
-              <Input
-                value={formData.phone}
-                onChangeText={(v) => handleInputChange("phone", v)}
-                keyboardType="phone-pad"
+                placeholder="seu@email.com"
               />
             </View>
             <View style={styles.formSection}>
@@ -210,7 +214,8 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.password}
                 onChangeText={(v) => handleInputChange("password", v)}
-                secureTextEntry
+                type="password"
+                placeholder="Mínimo 6 caracteres"
               />
             </View>
             <View style={styles.formSection}>
@@ -218,7 +223,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.confirmPassword}
                 onChangeText={(v) => handleInputChange("confirmPassword", v)}
-                secureTextEntry
+                type="password"
               />
             </View>
             <Button onPress={handleStep1Submit} style={{ marginTop: 16 }}>
@@ -228,14 +233,32 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
         ) : (
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.formSection}>
+              <Label>Telefone</Label>
+              <Input
+                value={formData.phone}
+                onChangeText={(v) => handleInputChange("phone", v)}
+                keyboardType="phone-pad"
+                placeholder="+351 9xx xxx xxx"
+              />
+            </View>
+            <View style={styles.formSection}>
+              <Label>Data de Nascimento (AAAA-MM-DD)</Label>
+              <Input
+                value={formData.birthDate}
+                onChangeText={(v) => handleInputChange("birthDate", v)}
+                placeholder="Ex: 1990-05-25"
+              />
+            </View>
+            <View style={styles.formSection}>
               <Label>Endereço (Bairro, Cidade)</Label>
               <Input
                 value={formData.address}
                 onChangeText={(v) => handleInputChange("address", v)}
+                placeholder="Ex: Arroios, Lisboa"
               />
             </View>
             <View style={styles.formSection}>
-              <Label>Distância Máxima</Label>
+              <Label>Distância Máxima para Matches</Label>
               <Select
                 options={distanceOptions}
                 selectedValue={formData.maxDistance}
@@ -243,7 +266,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               />
             </View>
             <View style={styles.formSection}>
-              <Label>Preferência Alimentar</Label>
+              <Label>Preferência Alimentar (Geral)</Label>
               <Select
                 options={dietaryOptions}
                 selectedValue={formData.dietary}
@@ -255,17 +278,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Input
                 value={formData.dietaryRestrictions}
                 onChangeText={(v) => handleInputChange("dietaryRestrictions", v)}
-                placeholder="Ex: Alérgico a nozes, intolerante a lactose..."
-              />
-            </View>
-            <View style={styles.formSection}>
-              <Label>Início Preferido</Label>
-              <Select
-                options={timeOptions}
-                selectedValue={formData.preferredStartTime}
-                onValueChange={(v) =>
-                  handleInputChange("preferredStartTime", v)
-                }
+                placeholder="Ex: Alérgico a nozes, vegetariano..."
               />
             </View>
             <View style={styles.formSection}>
@@ -273,7 +286,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               <Textarea
                 value={formData.notes}
                 onChangeText={(v) => handleInputChange("notes", v)}
-                placeholder="Algo mais que queira nos contar?"
+                placeholder="Algo que o anfitrião deva saber?"
               />
             </View>
             <View style={styles.termsRow}>
@@ -297,7 +310,7 @@ export default function SignUpForm({ inviteCode, onBack, onSignUpComplete }) {
               {isLoading ? (
                 <LoadingSpinner size="small" color="#FFFFFF" />
               ) : (
-                "Criar Conta"
+                "Finalizar Cadastro"
               )}
             </Button>
           </ScrollView>
