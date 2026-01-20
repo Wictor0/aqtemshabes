@@ -376,7 +376,15 @@ export default function EventDetailScreen({ route, navigation }) {
                     <Text style={{ flex: 1 }}>{addressToShow}</Text> 
                 </View>
 
-                <View style={styles.detailItem}><Icon name="account-group-outline" color="#10B981" size={20} /><Text>Até {event.max_guests} convidados</Text></View>
+                {/* 👇 ALTERAÇÃO: Lógica para mostrar "Sem limites de convidados" se for 0 👇 */}
+                <View style={styles.detailItem}>
+                  <Icon name="account-group-outline" color="#10B981" size={20} />
+                  <Text>
+                    {event.max_guests === 0 
+                      ? "Sem limites de convidados" 
+                      : `Até ${event.max_guests} convidados`}
+                  </Text>
+                </View>
               </View>
               
               <View style={styles.tagsContainer}>
