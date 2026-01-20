@@ -1,10 +1,11 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { sendAdminNotification } from '../../../../lib/emailService';
 
 /**
  * Rota de Cadastro robusta.
- * Garante que a imagem seja mapeada para 'avatar_url' (o que o seu Trigger SQL exige).
+ * Garante que a imagem seja mapeada para 'avatar_url' e os metadados (Bio/Validação) sejam persistidos.
  */
 export async function POST(request) {
   try {
@@ -28,7 +29,11 @@ export async function POST(request) {
       preferredStartTime: body.preferredStartTime || meta.preferred_start_time || "19:00",
       preferredEndTime: body.preferredEndTime || meta.preferred_end_time || "22:00",
       dietary: body.dietary || meta.dietary_preference || "kosher",
+      
+      // --- CAMPOS DE INTERESSE (BIO E VALIDAÇÃO) ---
       dietaryRestrictions: body.dietaryRestrictions || meta.dietaryRestrictions || "",
+      validatorOrganization: body.validatorOrganization || meta.validatorOrganization || "Qualquer",
+      
       notes: body.notes || meta.notes || "",
       invite_code: body.inviteCode || meta.invite_code || "",
       
@@ -37,7 +42,6 @@ export async function POST(request) {
       avatar_url: image, 
       // O seu Trigger SQL usa: raw_meta->>'birth_date'
       birth_date: body.birth_date || meta.birth_date || body.birthDate || meta.birthDate || null,
-      validatorOrganization: body.validatorOrganization || meta.validatorOrganization || "Qualquer"
     };
 
     const supabase = createRouteHandlerClient({ cookies });
@@ -48,21 +52,17 @@ export async function POST(request) {
     console.log(`[AUTH-SIGNUP] Processando cadastro: ${email}`);
     
     if (image) {
-      // Log do tamanho da string para verificar se excede limites do Supabase (Metadata)
       console.log(`[AUTH-SIGNUP] Foto detectada. Tamanho da string: ${image.length} caracteres.`);
-      
       if (image.length > 50000) {
-        console.warn("[AUTH-SIGNUP] AVISO: A imagem é muito grande e pode ser rejeitada pelo metadata do Supabase Auth.");
+        console.warn("[AUTH-SIGNUP] AVISO: Imagem grande detectada.");
       }
-    } else {
-      console.log("[AUTH-SIGNUP] Nenhuma foto detectada no corpo da requisição.");
     }
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
 
-    // Realizamos o SignUp no Supabase
+    // 1. Realizamos o SignUp no Supabase Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -75,6 +75,21 @@ export async function POST(request) {
     if (error) {
       console.error('[AUTH-SIGNUP] Erro Supabase Auth:', error.message);
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    // 2. ENVIO DE E-MAIL PARA ADMIN (CORRIGIDO COM OS NOVOS DADOS)
+    if (data.user) {
+        const emailText = `🚀 Um novo usuário se cadastrou e aguarda aprovação.\n\n` +
+                          `▪ Nome: ${userData.name}\n` +
+                          `▪ Email: ${email}\n` +
+                          `▪ Nascimento: ${userData.birth_date || 'Não informado'}\n` +
+                          `▪ Restrições Alimentares (Bio): ${userData.dietaryRestrictions || 'Nenhuma'}\n` + 
+                          `▪ Organização de Validação: ${userData.validatorOrganization}\n` + 
+                          `▪ Telefone: ${userData.phone}`;
+        
+        // Dispara a notificação para o admin
+        sendAdminNotification('🚀 Novo Usuário Cadastrado (Pendente)', emailText)
+            .catch(err => console.error("Falha ao enviar notificação para Admin:", err));
     }
 
     return NextResponse.json({

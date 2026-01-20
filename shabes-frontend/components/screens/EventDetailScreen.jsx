@@ -571,8 +571,8 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   eventTitle: { fontSize: 24, fontWeight: "bold" },
   hostInfoContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14 },
-  hostNameText: { color: '#374151', fontSize: 14, fontWeight: '500' }, // Estilo para nome sem link
+  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14, marginTop: 5 },
+  hostNameText: { color: '#374151', fontSize: 14, fontWeight: '500', marginTop: 6 }, // Estilo para nome sem link
   description: { fontSize: 16, color: "#6B7280", marginVertical: 16 },
   detailsGrid: { gap: 12 },
   detailItem: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },

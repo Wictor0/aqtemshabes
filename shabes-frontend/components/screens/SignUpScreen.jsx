@@ -314,28 +314,12 @@ export default function SignUpScreen({ navigation, route }) {
                 <Icon name="arrow-left" size={24} color="#374151" />
              </TouchableOpacity>
              <Text style={styles.title}>Criar Conta</Text>
-             <View style={{width: 24}} />
+             <View style={{width: 24}} marginTop={60}/>
           </View>
           
           <View style={styles.formContainer}>
-            
-            <View style={styles.avatarContainer}>
-                <TouchableOpacity onPress={handlePickAvatar} style={styles.avatarButton}>
-                    {avatar ? (
-                        <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
-                    ) : (
-                        <View style={styles.avatarPlaceholder}>
-                            <Icon name="camera" size={32} color="#9CA3AF" />
-                        </View>
-                    )}
-                    <View style={styles.editIconBadge}>
-                        <Icon name="edit-2" size={12} color="white" />
-                    </View>
-                </TouchableOpacity>
-                <Text style={styles.avatarHint}>Foto de Perfil</Text>
-            </View>
-
             <TextInput 
+                marginTop={80}
                 style={styles.input} 
                 placeholder="Nome Completo" 
                 placeholderTextColor="#9CA3AF"
@@ -429,7 +413,7 @@ export default function SignUpScreen({ navigation, route }) {
                 <Text style={styles.inputLabel}>Restrições Alimentares (Bio)</Text>
                 <TextInput 
                     style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                    placeholder="Você tem alguma restrição alimentar? (Ex: Vegano, Alérgico a glúten, Kosher...)" 
+                    placeholder="Você tem alguma restrição alimentar? (Ex: Vegano, Alérgico a glúten...)" 
                     placeholderTextColor="#9CA3AF"
                     value={dietaryRestrictions} 
                     onChangeText={setDietaryRestrictions} 
