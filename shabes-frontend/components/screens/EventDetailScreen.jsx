@@ -10,7 +10,10 @@ import {
   ActivityIndicator,
   FlatList,
   Linking, 
-  Alert
+  Alert,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Checkbox from 'expo-checkbox';
@@ -27,32 +30,18 @@ import VerifiedBadge from "../ui/VerifiedBadge";
 
 // Hooks, API & Utils
 import { useAuth } from "../../context/AuthContext";
-import { getEventById, createMatch, getDependents, getMatchById, updateMatchStatus } from "../../services/api"; 
+import { getEventById, createMatch, getDependents, getMatchById, updateMatchStatus, getEvents } from "../../services/api"; 
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
 
 // 👇 MAPAS DE TRADUÇÃO ATUALIZADOS E COMPLETOS
 const targetAudienceLabels = {
-  // Variações de Qualquer pessoa
   "any": "Qualquer pessoa",
-  "Any": "Qualquer pessoa",
-
-  // Variações de Famílias
   "families": "Famílias",
-  "Families": "Famílias",
-
-  // Variações de Jovens
   "young-adults": "Jovens",
   "young_adults": "Jovens",
-  "Young Adults": "Jovens",
-
-  // Variações de Adultos
   "adults": "Adultos",
-  "Adults": "Adultos",
-
-  // Variações de Seniores
   "seniors": "Seniores",
-  "Seniors": "Seniores",
 };
 
 const mealTypeLabels = {
@@ -62,23 +51,13 @@ const mealTypeLabels = {
   dinner: "Jantar",
 };
 
-// 👇 NOVA FUNÇÃO getLabel BLINDADA (Igual a que funcionou no outro arquivo)
+// Função getLabel blindada
 const getLabel = (value, map) => {
     if (!value) return null;
-
-    let key = value;
-
-    // 1. Se for array real do JS, pega o primeiro item
-    if (Array.isArray(value)) {
-        key = value[0];
-    }
-
-    // 2. Se for string, remove caracteres de array JSON ([" "])
+    let key = Array.isArray(value) ? value[0] : value;
     if (typeof key === 'string') {
         key = key.replace(/[\[\]"']/g, "").trim();
     }
-
-    // 3. Tenta buscar no mapa (Exato ou Minúsculo)
     return map[key] || map[key.toLowerCase()] || key;
 };
 
@@ -127,6 +106,7 @@ export default function EventDetailScreen({ route, navigation }) {
   const { user } = useAuth();
 
   const [event, setEvent] = useState(null);
+  const [hostedDates, setHostedDates] = useState([]); // Datas onde o utilizador é o anfitrião
   const [matchDetails, setMatchDetails] = useState(null); 
   const [attendingDependents, setAttendingDependents] = useState([]); 
   const [dependents, setDependents] = useState([]); 
@@ -144,8 +124,16 @@ export default function EventDetailScreen({ route, navigation }) {
     const fetchEventData = async () => {
       try {
         setLoading(true);
+        // 1. Busca detalhes do evento atual
         const { data: eventData } = await getEventById(eventId);
         setEvent(eventData);
+
+        // 2. Busca todos os eventos onde o utilizador logado é o host para checar conflitos
+        const { data: allEvents } = await getEvents();
+        const userHostedDates = allEvents
+          .filter(e => e.host_id === user.id)
+          .map(e => new Date(e.date).toISOString().split('T')[0]);
+        setHostedDates(userHostedDates);
 
         if (origin === 'home' && matchId) {
           const { data: matchData } = await getMatchById(matchId);
@@ -166,7 +154,7 @@ export default function EventDetailScreen({ route, navigation }) {
       }
     };
     fetchEventData();
-  }, [eventId, matchId, origin]);
+  }, [eventId, matchId, origin, user.id]);
 
   useEffect(() => {
     if (showInterestForm) {
@@ -196,6 +184,16 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleExpressInterest = async () => {
+    // 3. VALIDAÇÃO DE CONFLITO DE AGENDA
+    const eventDateString = new Date(event.date).toISOString().split('T')[0];
+    if (hostedDates.includes(eventDateString)) {
+      return toast({ 
+        type: "error", 
+        title: "Conflito de Agenda", 
+        description: "Você já está organizando um evento para este dia. Não é possível participar de outro evento na mesma data." 
+      });
+    }
+
     if (!personalMessage.trim()) {
       return toast({ type: "error", title: "Por favor, escreva uma mensagem pessoal" });
     }
@@ -235,30 +233,18 @@ export default function EventDetailScreen({ route, navigation }) {
     }
   };
 
-  // Lógica para Aceitar ou Recusar o match
   const handleMatchAction = async (status) => {
     if (!matchId) return;
     setActionLoading(true);
     try {
       await updateMatchStatus(matchId, status);
-      
-      // Atualiza o estado local para refletir a mudança imediatamente na tela
       setMatchDetails(prev => ({ ...prev, status: status }));
-      
       toast({
         type: "success",
         title: status === "accepted" ? "Convidado aceito!" : "Pedido recusado.",
-        description: status === "accepted" 
-          ? "O convidado será notificado." 
-          : "O status foi atualizado.",
       });
     } catch (error) {
-      console.error(`Erro ao atualizar match para ${status}:`, error);
-      toast({
-        type: "error",
-        title: "Erro na ação",
-        description: "Não foi possível atualizar o status. Tente novamente.",
-      });
+      toast({ type: "error", title: "Erro na ação" });
     } finally {
       setActionLoading(false);
     }
@@ -268,16 +254,13 @@ export default function EventDetailScreen({ route, navigation }) {
     if (!matchDetails) return;
     const isUserHost = user?.id === event.host_id;
     const targetPhone = isUserHost ? matchDetails.guest?.phone : event.host?.phone;
-    
     if (!targetPhone) {
-      toast({ type: "error", title: "Telefone não encontrado", description: "Este utilizador não registou um número de telefone." });
+      toast({ type: "error", title: "Telefone não encontrado" });
       return;
     }
-    
     const url = `whatsapp://send?phone=${targetPhone}`;
-    
     Linking.openURL(url).catch(() => {
-      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp. Verifique se a aplicação está instalada.');
+      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
     });
   };
 
@@ -296,260 +279,203 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const isUserHost = user?.id === event.host_id;
   const hostAgeGroup = event.host ? calculateAgeGroup(event.host.birth_date) : null;
-  
   const showInterestButton = !isUserHost && origin !== "home";
   const showMatchDetails = origin === "home" && matchDetails;
-  
   const isMatchAccepted = showMatchDetails && matchDetails.status === 'accepted';
   const showWhatsAppButton = isUserHost || isMatchAccepted;
-
   const addressToShow = isMatchAccepted ? event.full_address : event.approximate_address;
   const showHostActions = isUserHost && showMatchDetails && matchDetails.status === 'pending';
-
-  // 👇 Lógica de Blind: Mostra identidade se for o dono ou se foi aceito
   const showHostIdentity = isUserHost || isMatchAccepted;
   const hostDisplayName = showHostIdentity ? (event.host?.full_name || "Desconhecido") : "Anfitrião da Comunidade";
-
-  // 👇 VERIFICAÇÃO DE PRAZO 👇
   const isDeadlinePassed = event.deadline_datetime && new Date() > new Date(event.deadline_datetime);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
-          <Icon name="chevron-left" size={28} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detalhes do Evento</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
+            <Icon name="chevron-left" size={28} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Detalhes do Evento</Text>
+          <View style={{ width: 40 }} />
+        </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.contentWrapper}>
-          <Card style={{ width: "100%" }}>
-            <CardHeader>
-              <CardTitle style={styles.eventTitle}>{event.title}</CardTitle>
-              <View style={styles.hostInfoContainer}>
-                <CardDescription>Criado por: </CardDescription>
-                
-                {/* 👇 CONDICIONAL DE EXIBIÇÃO DO ANFITRIÃO 👇 */}
-                {showHostIdentity ? (
-                    <>
-                        <TouchableOpacity onPress={() => navigation.navigate('PublicProfile', { userId: event.host?.id })}>
-                            <Text style={styles.hostNameLink}>{hostDisplayName}</Text>
-                        </TouchableOpacity>
-                        <VerifiedBadge role={event.host?.role} size={14} style={{ marginLeft: 4 }} />
-                    </>
-                ) : (
-                    // Se não for o dono e não foi aceito, mostra texto simples sem link
-                    <Text style={styles.hostNameText}>{hostDisplayName}</Text>
-                )}
-                {/* 👆 FIM DA ALTERAÇÃO 👆 */}
-
-              </View>
-            </CardHeader>
-            <CardContent>
-              <Text style={styles.description}>{event.description}</Text>
-              
-              <View style={styles.detailsGrid}>
-                <View style={styles.detailItem}><Icon name="calendar-month-outline" color="#4F46E5" size={20} /><Text>{formatShabbatDate(new Date(event.date))}</Text></View>
-                
-                {event.meal_type && (
-                  <View style={styles.detailItem}>
-                    <Icon name="silverware-fork-knife" color="#F59E0B" size={20} />
-                    {/* 👇 USO DA FUNÇÃO getLabel BLINDADA */}
-                    <Text>{getLabel(event.meal_type, mealTypeLabels)}</Text>
-                  </View>
-                )}
-                
-                {/* 👇 EXIBIÇÃO DO PRAZO 👇 */}
-                {event.deadline_datetime && (
-                    <View style={styles.detailItem}>
-                        <Icon name="clock-alert-outline" color="#DC2626" size={20} />
-                        <Text style={{color: isDeadlinePassed ? '#DC2626' : '#374151'}}>
-                            Prazo: {new Date(event.deadline_datetime).toLocaleString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                    </View>
-                )}
-
-                <View style={styles.detailItem}>
-                    <Icon name="map-marker-outline" color="#EC4899" size={20} />
-                    <Text style={{ flex: 1 }}>{addressToShow}</Text> 
-                </View>
-
-                {/* 👇 ALTERAÇÃO: Lógica para mostrar "Sem limites de convidados" se for 0 👇 */}
-                <View style={styles.detailItem}>
-                  <Icon name="account-group-outline" color="#10B981" size={20} />
-                  <Text>
-                    {event.max_guests === 0 
-                      ? "Sem limites de convidados" 
-                      : `Até ${event.max_guests} convidados`}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {hostAgeGroup && (<Badge variant="outline">Anfitriões: {hostAgeGroup}</Badge>)}
-                {/* 👇 USO DA FUNÇÃO getLabel BLINDADA NA FAIXA ETÁRIA */}
-                {event.target_audience && (<Badge variant="outline">Público: {getLabel(event.target_audience, targetAudienceLabels)}</Badge>)}
-                {event.languages?.map((lang) => (<Badge key={lang} variant="outline">{lang}</Badge>))}
-              </View>
-            </CardContent>
-          </Card>
-
-          {/* Bloco 1: Detalhes do Pedido (Aparece se veio da Home/Agenda) */}
-           {showMatchDetails && (
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.contentWrapper}>
             <Card style={{ width: "100%" }}>
               <CardHeader>
-                  <CardTitle>Detalhes do Pedido</CardTitle>
-                  
-                  {/* Se já foi respondido (e não é pendente), mostra badge do status */}
-                  {!showHostActions && matchDetails.status !== 'pending' && (
-                    <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
-                        {matchDetails.status === 'accepted' ? (
-                          <Badge variant="success">Pedido Aceito</Badge>
-                        ) : (
-                          <Badge variant="destructive">Pedido Recusado</Badge>
-                        )}
-                    </View>
+                <CardTitle style={styles.eventTitle}>{event.title}</CardTitle>
+                <View style={styles.hostInfoContainer}>
+                  <CardDescription>Criado por: </CardDescription>
+                  {showHostIdentity ? (
+                    <>
+                      <TouchableOpacity onPress={() => navigation.navigate('PublicProfile', { userId: event.host?.id })}>
+                        <Text style={styles.hostNameLink}>{hostDisplayName}</Text>
+                      </TouchableOpacity>
+                      <VerifiedBadge role={event.host?.role} size={14} style={{ marginLeft: 4 }} />
+                    </>
+                  ) : (
+                    <Text style={styles.hostNameText}>{hostDisplayName}</Text>
                   )}
-
-                  <View style={styles.hostInfoContainer}>
-                    <CardDescription>Feito por: </CardDescription>
-                    <TouchableOpacity onPress={() => navigation.navigate('PublicProfile', { userId: matchDetails.guest?.id })}>
-                      <Text style={styles.hostNameLink}>{matchDetails.guest?.full_name || "Convidado"}</Text>
-                    </TouchableOpacity>
-                    {/* 👇 SELO DO CONVIDADO (AUTOR DO PEDIDO) 👇 */}
-                    <VerifiedBadge role={matchDetails.guest?.role} size={14} style={{ marginLeft: 4 }} />
-                  </View>
-                  {/* 👇 VALIDAÇÃO DO CONVIDADO (AUTOR DO PEDIDO) ADICIONADA ABAIXO 👇 */}
-                   {isUserHost && matchDetails.guest?.validator_organization && (
-                      <View style={styles.validatorBadgeSmall}>
-                          <Text style={styles.validatorTextSmall}>
-                            Validado por: <Text style={{fontWeight: 'bold'}}>{matchDetails.guest.validator_organization}</Text>
-                          </Text>
-                      </View>
-                  )}
-                  {/* 👆 FIM DA ADIÇÃO 👆 */}
+                </View>
               </CardHeader>
               <CardContent>
-                  <Text style={styles.sectionTitle}>Mensagem Pessoal</Text>
-                  <Text style={styles.messageText}>"{matchDetails.personal_message || 'Nenhuma mensagem.'}"</Text>
-
-                  <Text style={styles.sectionTitle}>Participantes</Text>
-                  <View style={styles.participantCard}>
-                      <View style={{flex: 1}}>
-                          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                              <Icon name="account" size={20} color="#6B7280" style={{ marginRight: 8 }}/>
-                              <Text>{matchDetails.guest?.full_name || 'Convidado'} (Principal)</Text>
-                          </View>
-
-                          {/* 👇 EXIBIÇÃO DA RESTRIÇÃO ALIMENTAR NO DETALHE DO PEDIDO 👇 */}
-                          {(isUserHost && matchDetails.guest?.dietary_restrictions) && (
-                              <View style={styles.dietaryWarning}>
-                                  <Icon name="alert-circle" size={14} color="#B45309" />
-                                  <Text style={styles.dietaryWarningText}>Restrição: {matchDetails.guest.dietary_restrictions}</Text>
-                              </View>
-                          )}
-                          {/* 👆 FIM DA ADIÇÃO 👆 */}
-                      </View>
-                  </View>
-
-                  {attendingDependents.length > 0 && (
-                      <FlatList
-                          data={attendingDependents}
-                          keyExtractor={(item) => item.id}
-                          renderItem={({ item }) => <DependentDisplay dependent={item} />}
-                          scrollEnabled={false}
-                          style={{ marginTop: 8 }}
-                      />
-                  )}
-                  
-                  {/* BOTÕES DE ACEITAR/RECUSAR (Apenas se for Host e Pendente) */}
-                  {showHostActions && (
-                    <View style={styles.hostActionsContainer}>
-                      <Text style={styles.actionLabel}>Responder solicitação:</Text>
-                      <View style={styles.buttonsRow}>
-                        <Button 
-                          variant="destructive" 
-                          style={{ flex: 1 }} 
-                          onPress={() => handleMatchAction("declined")}
-                          disabled={actionLoading}
-                        >
-                          Recusar
-                        </Button>
-                        <Button 
-                          style={{ flex: 1, backgroundColor: "#22C55E" }} 
-                          onPress={() => handleMatchAction("accepted")}
-                          disabled={actionLoading}
-                        >
-                          {actionLoading ? <LoadingSpinner size="small" color="#FFF"/> : "Aceitar"}
-                        </Button>
-                      </View>
+                <Text style={styles.description}>{event.description}</Text>
+                
+                <View style={styles.detailsGrid}>
+                  <View style={styles.detailItem}><Icon name="calendar-month-outline" color="#4F46E5" size={20} /><Text>{formatShabbatDate(new Date(event.date))}</Text></View>
+                  {event.meal_type && (
+                    <View style={styles.detailItem}>
+                      <Icon name="silverware-fork-knife" color="#F59E0B" size={20} />
+                      <Text>{getLabel(event.meal_type, mealTypeLabels)}</Text>
                     </View>
                   )}
-
-                  {/* Botão de WhatsApp */}
-                  {showWhatsAppButton && (
-                      <TouchableOpacity
-                        style={styles.whatsappButton}
-                        onPress={handleOpenWhatsApp}
-                      >
-                        <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 10 }} />
-                        <Text style={styles.whatsappButtonText}>
-                          {isUserHost ? 'Conversar com Convidado' : 'Conversar com Anfitrião'}
-                        </Text>
-                      </TouchableOpacity>
+                  {event.deadline_datetime && (
+                    <View style={styles.detailItem}>
+                      <Icon name="clock-alert-outline" color="#DC2626" size={20} />
+                      <Text style={{color: isDeadlinePassed ? '#DC2626' : '#374151'}}>
+                        Prazo: {new Date(event.deadline_datetime).toLocaleString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
                   )}
+                  <View style={styles.detailItem}>
+                    <Icon name="map-marker-outline" color="#EC4899" size={20} />
+                    <Text style={{ flex: 1 }}>{addressToShow}</Text> 
+                  </View>
+                  <View style={styles.detailItem}>
+                    <Icon name="account-group-outline" color="#10B981" size={20} />
+                    <Text>{event.max_guests === 0 ? "Sem limites" : `Até ${event.max_guests} convidados`}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.tagsContainer}>
+                  {hostAgeGroup && (<Badge variant="outline">Anfitriões: {hostAgeGroup}</Badge>)}
+                  {event.target_audience && (<Badge variant="outline">Público: {getLabel(event.target_audience, targetAudienceLabels)}</Badge>)}
+                  {event.languages?.map((lang) => (<Badge key={lang} variant="outline">{lang}</Badge>))}
+                </View>
               </CardContent>
             </Card>
-          )}
 
-          {/* Bloco 2: Formulário de Interesse (Para convidados) */}
-          {showInterestButton && (
-            <>
-              {/* 👇 SE O PRAZO EXPIROU, MOSTRA AVISO E BLOQUEIA FORMULÁRIO 👇 */}
-              {isDeadlinePassed ? (
-                  <Card style={{ width: "100%", borderColor: '#DC2626' }}>
-                      <CardContent style={{ alignItems: 'center', padding: 24 }}>
-                          <Icon name="clock-alert" size={48} color="#DC2626" />
-                          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#DC2626', marginTop: 12 }}>
-                              Inscrições Encerradas
-                          </Text>
-                          <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 8 }}>
-                              O prazo para se inscrever neste evento expirou em {new Date(event.deadline_datetime).toLocaleDateString('pt-BR')}.
-                          </Text>
-                      </CardContent>
-                  </Card>
-              ) : (
-                  // Se não expirou, mostra o formulário ou botão normal
-                  <>
-                    {showInterestForm ? (
-                        <Card style={{ width: "100%" }}>
-                        <CardHeader>
-                            <CardTitle>Enviar Pedido de Participação</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <Textarea placeholder="Escreva uma mensagem para o anfitrião..." value={personalMessage} onChangeText={setPersonalMessage} style={{ marginBottom: 16 }} />
-                            {loadingDependents ? ( <ActivityIndicator style={{ marginVertical: 16 }} /> ) : dependents.length > 0 ? ( <View style={styles.dependentsSection}> <Text style={styles.dependentsTitle}>Quem irá com você?</Text> {dependents.map((dep) => ( <DependentSelector key={dep.id} dependent={dep} isSelected={selectedDependentIds.includes(dep.id)} onToggle={() => handleToggleDependent(dep.id)} /> ))} </View> ) : null}
-                            <View style={styles.actionsContainer}>
-                            <Button variant="outline" style={{ flex: 1 }} onPress={() => setShowInterestForm(false)}>Cancelar</Button>
-                            <Button style={{ flex: 1 }} onPress={handleExpressInterest} disabled={isSubmitting}>{isSubmitting ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Enviar"}</Button>
-                            </View>
-                        </CardContent>
-                        </Card>
-                    ) : (
-                        <LinearGradient colors={["#4F46E5", "#7C3AED"]} style={styles.ctaCard}>
-                        <Text style={styles.ctaTitle}>Interessado?</Text>
-                        <Text style={styles.ctaSubtitle}>Demonstre interesse e envie uma mensagem personalizada.</Text>
-                        <Button variant="secondary" onPress={() => setShowInterestForm(true)}>Tenho Interesse</Button>
-                        </LinearGradient>
+             {showMatchDetails && (
+              <Card style={{ width: "100%" }}>
+                <CardHeader>
+                    <CardTitle>Detalhes do Pedido</CardTitle>
+                    {!showHostActions && matchDetails.status !== 'pending' && (
+                      <View style={{ marginTop: 8, alignSelf: 'flex-start' }}>
+                          <Badge variant={matchDetails.status === 'accepted' ? "success" : "destructive"}>
+                            {matchDetails.status === 'accepted' ? "Pedido Aceito" : "Pedido Recusado"}
+                          </Badge>
+                      </View>
                     )}
-                  </>
-              )}
-            </>
-          )}
-        </View>
-      </ScrollView>
+                    <View style={styles.hostInfoContainer}>
+                      <CardDescription>Feito por: </CardDescription>
+                      <TouchableOpacity onPress={() => navigation.navigate('PublicProfile', { userId: matchDetails.guest?.id })}>
+                        <Text style={styles.hostNameLink}>{matchDetails.guest?.full_name || "Convidado"}</Text>
+                      </TouchableOpacity>
+                      <VerifiedBadge role={matchDetails.guest?.role} size={14} style={{ marginLeft: 4 }} />
+                    </View>
+                    {isUserHost && matchDetails.guest?.validator_organization && (
+                      <View style={styles.validatorBadgeSmall}>
+                        <Text style={styles.validatorTextSmall}>Validado por: <Text style={{fontWeight: 'bold'}}>{matchDetails.guest.validator_organization}</Text></Text>
+                      </View>
+                    )}
+                </CardHeader>
+                <CardContent>
+                    <Text style={styles.sectionTitle}>Mensagem Pessoal</Text>
+                    <Text style={styles.messageText}>"{matchDetails.personal_message || 'Nenhuma mensagem.'}"</Text>
+
+                    <Text style={styles.sectionTitle}>Participantes</Text>
+                    <View style={styles.participantCard}>
+                      <View style={{flex: 1}}>
+                        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                          <Icon name="account" size={20} color="#6B7280" style={{ marginRight: 8 }}/>
+                          <Text>{matchDetails.guest?.full_name || 'Convidado'} (Principal)</Text>
+                        </View>
+                        {(isUserHost && matchDetails.guest?.dietary_restrictions) && (
+                          <View style={styles.dietaryWarning}>
+                            <Icon name="alert-circle" size={14} color="#B45309" />
+                            <Text style={styles.dietaryWarningText}>Restrição: {matchDetails.guest.dietary_restrictions}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    {attendingDependents.map((item) => <DependentDisplay key={item.id} dependent={item} />)}
+                    
+                    {showHostActions && (
+                      <View style={styles.hostActionsContainer}>
+                        <Text style={styles.actionLabel}>Responder solicitação:</Text>
+                        <View style={styles.buttonsRow}>
+                          <Button variant="destructive" style={{ flex: 1 }} onPress={() => handleMatchAction("declined")} disabled={actionLoading}>Recusar</Button>
+                          <Button style={{ flex: 1, backgroundColor: "#22C55E" }} onPress={() => handleMatchAction("accepted")} disabled={actionLoading}>
+                            {actionLoading ? <LoadingSpinner size="small" color="#FFF"/> : "Aceitar"}
+                          </Button>
+                        </View>
+                      </View>
+                    )}
+
+                    {showWhatsAppButton && (
+                        <TouchableOpacity style={styles.whatsappButton} onPress={handleOpenWhatsApp}>
+                          <Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 10 }} />
+                          <Text style={styles.whatsappButtonText}>{isUserHost ? 'Conversar com Convidado' : 'Conversar com Anfitrião'}</Text>
+                        </TouchableOpacity>
+                    )}
+                </CardContent>
+              </Card>
+            )}
+
+            {showInterestButton && (
+              <>
+                {isDeadlinePassed ? (
+                    <Card style={{ width: "100%", borderColor: '#DC2626' }}>
+                        <CardContent style={{ alignItems: 'center', padding: 24 }}>
+                            <Icon name="clock-alert" size={48} color="#DC2626" />
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#DC2626', marginTop: 12 }}>Inscrições Encerradas</Text>
+                            <Text style={{ textAlign: 'center', color: '#6B7280', marginTop: 8 }}>O prazo para se inscrever neste evento expirou.</Text>
+                        </CardContent>
+                    </Card>
+                ) : showInterestForm ? (
+                    <Card style={{ width: "100%" }}>
+                    <CardHeader><CardTitle>Enviar Pedido de Participação</CardTitle></CardHeader>
+                    <CardContent>
+                        <Textarea 
+                          placeholder="Escreva uma mensagem para o anfitrião..." 
+                          value={personalMessage} 
+                          onChangeText={setPersonalMessage} 
+                          style={{ marginBottom: 16 }} 
+                        />
+                        {loadingDependents ? ( <ActivityIndicator style={{ marginVertical: 16 }} /> ) : dependents.length > 0 ? ( 
+                          <View style={styles.dependentsSection}> 
+                            <Text style={styles.dependentsTitle}>Quem irá com você?</Text> 
+                            {dependents.map((dep) => ( 
+                              <DependentSelector key={dep.id} dependent={dep} isSelected={selectedDependentIds.includes(dep.id)} onToggle={() => handleToggleDependent(dep.id)} /> 
+                            ))} 
+                          </View> 
+                        ) : null}
+                        <View style={styles.actionsContainer}>
+                          <Button variant="outline" style={{ flex: 1 }} onPress={() => setShowInterestForm(false)}>Cancelar</Button>
+                          <Button style={{ flex: 1 }} onPress={handleExpressInterest} disabled={isSubmitting}>{isSubmitting ? <LoadingSpinner size="small" color="#FFFFFF" /> : "Enviar"}</Button>
+                        </View>
+                    </CardContent>
+                    </Card>
+                ) : (
+                    <LinearGradient colors={["#4F46E5", "#7C3AED"]} style={styles.ctaCard}>
+                      <Text style={styles.ctaTitle}>Interessado?</Text>
+                      <Text style={styles.ctaSubtitle}>Demonstre interesse e envie uma mensagem personalizada.</Text>
+                      <Button variant="secondary" onPress={() => setShowInterestForm(true)}>Tenho Interesse</Button>
+                    </LinearGradient>
+                )}
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -566,100 +492,35 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
   iconButton: { padding: 8 },
-  container: { padding: 16, alignItems: "center" },
+  scrollContent: { padding: 16, paddingBottom: 40, alignItems: "center" },
   contentWrapper: { width: "100%", maxWidth: 700, gap: 24 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   eventTitle: { fontSize: 24, fontWeight: "bold" },
-  hostInfoContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14, marginTop: 5 },
-  hostNameText: { color: '#374151', fontSize: 14, fontWeight: '500', marginTop: 6 }, // Estilo para nome sem link
+  hostInfoContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap' },
+  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14, marginTop: 0 },
+  hostNameText: { color: '#374151', fontSize: 14, fontWeight: '500', marginTop: 6 },
   description: { fontSize: 16, color: "#6B7280", marginVertical: 16 },
   detailsGrid: { gap: 12 },
   detailItem: { flexDirection: "row", alignItems: "center", gap: 8, flex: 1 },
   tagsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
-  ctaCard: { padding: 20, borderRadius: 12, alignItems: "center", gap: 12 },
+  ctaCard: { padding: 20, borderRadius: 12, alignItems: "center", gap: 12, width: '100%' },
   ctaTitle: { fontSize: 20, fontWeight: "bold", color: "white" },
   ctaSubtitle: { color: "rgba(229, 231, 235, 0.9)", textAlign: "center", marginBottom: 8 },
   actionsContainer: { flexDirection: "row", gap: 12, marginTop: 16 },
-  dependentsSection: {
-    marginVertical: 16, padding: 12, backgroundColor: '#F3F4F6', borderRadius: 8,
-  },
-  dependentsTitle: {
-    fontSize: 16, fontWeight: 'bold', marginBottom: 12, color: '#374151',
-  },
-  dependentSelectorRow: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingVertical: 4,
-  },
+  dependentsSection: { marginVertical: 16, padding: 12, backgroundColor: '#F3F4F6', borderRadius: 8, width: '100%' },
+  dependentsTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12, color: '#374151' },
+  dependentSelectorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingVertical: 4 },
   dependentSelectorText: { marginLeft: 12, fontSize: 15, color: '#374151' },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', marginTop: 16, marginBottom: 8, color: '#1F2937' },
   messageText: { fontStyle: 'italic', color: '#4B5563' },
-  participantCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB',
-    padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB',
-    marginBottom: 8,
-  },
-  whatsappButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#25D366', 
-    padding: 14,
-    borderRadius: 12,
-    marginTop: 20,
-  },
-  whatsappButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  hostActionsContainer: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 12,
-  },
-  buttonsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-
-  // 👇 Estilo para o aviso de restrição alimentar
-  dietaryWarning: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-    marginLeft: 28, 
-    backgroundColor: '#FFFBEB',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#FEF3C7'
-  },
-  dietaryWarningText: {
-    fontSize: 13,
-    color: '#92400E',
-    flex: 1, 
-  },
-  
-  // 👇 Novos estilos para o badge de validação pequeno
-  validatorBadgeSmall: {
-    backgroundColor: '#F3F4F6',
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    marginTop: 4,
-    marginLeft: 28, // Alinha com o texto, abaixo do nome
-    alignSelf: 'flex-start',
-  },
-  validatorTextSmall: {
-    fontSize: 12,
-    color: '#4B5563',
-  },
+  participantCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8 },
+  whatsappButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#25D366', padding: 14, borderRadius: 12, marginTop: 20 },
+  whatsappButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  hostActionsContainer: { marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#E5E7EB" },
+  actionLabel: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 12 },
+  buttonsRow: { flexDirection: "row", gap: 12 },
+  dietaryWarning: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, backgroundColor: '#FFFBEB', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FEF3C7' },
+  dietaryWarningText: { fontSize: 13, color: '#92400E', flex: 1 },
+  validatorBadgeSmall: { backgroundColor: '#F3F4F6', paddingVertical: 2, paddingHorizontal: 8, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' },
+  validatorTextSmall: { fontSize: 12, color: '#4B5563' },
 });

@@ -6,7 +6,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null); // Novo estado para o usuário completo (Auth + Profile)
+  const [user, setUser] = useState(null); // Estado para o usuário completo (Auth + Profile)
   const [isLoading, setIsLoading] = useState(true);
 
   // Função auxiliar para buscar dados da tabela 'profiles' e mesclar com o usuário da Auth
@@ -76,9 +76,6 @@ export function AuthProvider({ children }) {
           await fetchProfileAndSetUser(session.user);
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-           // Opcional: Atualizar perfil no refresh se necessário, mas geralmente não precisa
-           // await fetchProfileAndSetUser(session.user);
         }
       }
     );
@@ -89,14 +86,37 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast({ type: "error", title: "Credenciais Inválidas", description: "O email ou a senha estão incorretos." });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email: email.toLowerCase().trim(), 
+        password 
+      });
+
+      if (error) {
+        // TRATAMENTO ESPECÍFICO PARA E-MAIL NÃO VERIFICADO
+        // O Supabase retorna a mensagem "Email not confirmed" nestes casos
+        if (error.message.includes("Email not confirmed")) {
+          toast({ 
+            type: "error", 
+            title: "Verificação Pendente", 
+            description: "Conclua a verificação do e-mail para poder entrar." 
+          });
+        } else {
+          toast({ 
+            type: "error", 
+            title: "Credenciais Inválidas", 
+            description: "O e-mail ou a senha estão incorretos." 
+          });
+        }
+        return false;
+      }
+
+      toast({ type: "success", title: "Login realizado!", description: "Bem-vindo de volta!" });
+      return true;
+    } catch (err) {
+      console.error("Erro fatal no login:", err);
       return false;
     }
-    // O fetchProfileAndSetUser será chamado automaticamente pelo onAuthStateChange ('SIGNED_IN')
-    toast({ type: "success", title: "Login realizado!", description: "Bem-vindo de volta!" });
-    return true;
   };
 
   const signUp = async (email, password, metadata) => {
@@ -122,7 +142,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       session,
-      user, // Agora enviamos o objeto 'user' enriquecido com o 'role' do banco
+      user, // Objeto 'user' enriquecido com o 'role' e dados do banco
       isAuthenticated: !!session?.user,
       isLoading,
       signIn,

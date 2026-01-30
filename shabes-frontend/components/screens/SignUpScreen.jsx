@@ -112,13 +112,15 @@ export default function SignUpScreen({ navigation, route }) {
   const [birthDate, setBirthDate] = useState(new Date(2000, 0, 1));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [avatar, setAvatar] = useState(null);
+
+  // --- ESTADOS DE IMAGEM ---
+  const [avatar, setAvatar] = useState(null);      // Foto de perfil (galeria)
+  const [facePhoto, setFacePhoto] = useState(null); // Foto de rosto (câmera)
 
   // Estados adicionais
   const [dietaryRestrictions, setDietaryRestrictions] = useState("");
   const [validatorOrganization, setValidatorOrganization] = useState("Qualquer");
   
-  // Estados para Animação do Accordion de Validação
   const [validatorOpen, setValidatorOpen] = useState(false);
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const iconRotation = useRef(new Animated.Value(0)).current;
@@ -175,34 +177,73 @@ export default function SignUpScreen({ navigation, route }) {
       setShowDatePicker(false);
   };
 
+  // --- FUNÇÕES DE CAPTURA DE IMAGEM ---
+  
   const handlePickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
         Alert.alert('Permissão Necessária', 'Precisamos da sua permissão para acessar a galeria.');
         return;
     }
-    
     const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.7,
+        quality: 0.5,
         base64: true,
     });
+    if (!result.canceled && result.assets) setAvatar(result.assets[0]);
+  };
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-        setAvatar(result.assets[0]);
+  const handleTakeFacePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+        Alert.alert('Permissão Necessária', 'Precisamos de acesso à câmera para validar sua identidade.');
+        return;
     }
+    const result = await ImagePicker.launchCameraAsync({
+        cameraType: ImagePicker.CameraType.front,
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.5,
+        base64: true,
+    });
+    if (!result.canceled && result.assets) setFacePhoto(result.assets[0]);
+  };
+
+  // Helper para upload de arquivos
+  const uploadImageToSupabase = async (imageAsset, folderName, userId) => {
+    if (!imageAsset) return null;
+    const fileExt = imageAsset.uri.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `${userId}/${folderName}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, decode(imageAsset.base64), { 
+            contentType: `image/${fileExt}` 
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+    return publicUrl;
   };
 
   const handleSignUp = async () => {
-    // 1. Validação Básica
     if (!email || !password || !fullName || !phoneNumber) {
       Alert.alert('Campos Obrigatórios', 'Por favor, preencha todos os campos.');
       return;
     }
 
-    // 2. Validação de Senha (Supabase exige min 6 chars)
+    if (!facePhoto) {
+      Alert.alert('Identificação Necessária', 'Por favor, tire uma foto do seu rosto para validar sua conta.');
+      return;
+    }
+
     if (password.length < 6) {
         Alert.alert('Senha Fraca', 'A senha deve ter pelo menos 6 caracteres.');
         return;
@@ -213,75 +254,60 @@ export default function SignUpScreen({ navigation, route }) {
       const cleanPhone = phoneNumber.replace(/\D/g, '');
       const fullPhone = `${selectedCountry.code}${cleanPhone}`;
 
+      // 1. SignUp inicial enviando os dados básicos e metadados
       const response = await signUp({
         email,
         password,
         name: fullName,
         phone: fullPhone,
-        interests: [], 
         birth_date: birthDate.toISOString().split('T')[0],
         inviteCode: inviteCode,
         validatorOrganization: validatorOrganization,
-        dietaryRestrictions: dietaryRestrictions // 👈 Enviando com o nome correto esperado pelo backend
+        dietaryRestrictions: dietaryRestrictions,
+        face_photo_url: "pending_upload" // Marcador para o backend saber que a foto virá
       });
 
       const { session, user } = response.data;
 
-      if (session && session.access_token) {
-        const { error } = await supabase.auth.setSession({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        });
-        if (error) throw error;
+      if (user) {
+        let avatarUrl = null;
+        let faceUrl = null;
 
-        if (avatar && user) {
-            try {
-                const fileExt = avatar.uri.split('.').pop();
-                const fileName = `${Date.now()}.${fileExt}`;
-                const filePath = `${user.id}/${fileName}`;
-                
-                const { error: uploadError } = await supabase.storage
-                    .from('avatars')
-                    .upload(filePath, decode(avatar.base64), { 
-                        contentType: `image/${fileExt}` 
-                    });
-                
-                if (!uploadError) {
-                    const { data: { publicUrl } } = supabase.storage
-                        .from('avatars')
-                        .getPublicUrl(filePath);
-                    
-                    await supabase.from('profiles')
-                        .update({ avatar_url: publicUrl })
-                        .eq('id', user.id);
-                }
-            } catch (avatarError) {
-                console.log("Falha ao enviar avatar (não crítico):", avatarError);
-            }
+        // 2. Upload das imagens (Avatar e Selfie)
+        try {
+            if (avatar) avatarUrl = await uploadImageToSupabase(avatar, 'profile', user.id);
+            if (facePhoto) faceUrl = await uploadImageToSupabase(facePhoto, 'verification', user.id);
+
+            // 3. Atualiza o perfil com as URLs finais
+            await supabase.from('profiles').update({ 
+                avatar_url: avatarUrl,
+                face_photo_url: faceUrl 
+            }).eq('id', user.id);
+
+            // Envia novamente para o backend apenas para atualizar a URL do email (opcional se o backend pegar do banco)
+            // No seu caso, o SignUp já enviou o sinal, o upload garante que o link funcione no banco.
+
+        } catch (imgErr) {
+            console.log("Erro no upload de imagens:", imgErr);
         }
-      } else {
-        Alert.alert(
-          'Cadastro Realizado',
-          'Verifique seu e-mail para confirmar a conta.',
-          [{ text: 'OK', onPress: () => navigation.navigate('Welcome') }]
-        );
+
+        if (session && session.access_token) {
+            await supabase.auth.setSession({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+            });
+        } else {
+            Alert.alert(
+              'Cadastro Realizado',
+              'Verifique seu e-mail para confirmar a conta.',
+              [{ text: 'OK', onPress: () => navigation.navigate('Welcome') }]
+            );
+        }
       }
     } catch (error) {
-      console.error("Erro detalhado no cadastro:", error.response?.data || error.message);
-      
-      let errorMessage = 'Erro ao criar conta.';
-      
-      // Tratamento de mensagens comuns do Supabase
+      console.error("Erro no cadastro:", error.response?.data || error.message);
       const backendError = error.response?.data?.error || error.message;
-      if (backendError.includes("already registered")) {
-          errorMessage = "Este e-mail já está cadastrado.";
-      } else if (backendError.includes("Password should be")) {
-          errorMessage = "A senha é muito fraca.";
-      } else if (backendError) {
-          errorMessage = backendError;
-      }
-
-      Alert.alert('Erro', errorMessage);
+      Alert.alert('Erro', backendError.includes("already registered") ? "Este e-mail já está cadastrado." : backendError);
     } finally {
       setIsLoading(false);
     }
@@ -314,12 +340,48 @@ export default function SignUpScreen({ navigation, route }) {
                 <Icon name="arrow-left" size={24} color="#374151" />
              </TouchableOpacity>
              <Text style={styles.title}>Criar Conta</Text>
-             <View style={{width: 24}} marginTop={60}/>
+             <View style={{width: 24}} />
           </View>
           
           <View style={styles.formContainer}>
+            
+            {/* SEÇÃO DE FOTOS (DUAL) */}
+            <View style={styles.photoRow}>
+               <View style={styles.photoBox}>
+                  <TouchableOpacity onPress={handlePickAvatar} style={styles.avatarButton}>
+                    {avatar ? (
+                      <Image source={{ uri: avatar.uri }} style={styles.avatarImage} />
+                    ) : (
+                      <Icon name="user" size={30} color="#9CA3AF" />
+                    )}
+                    <View style={styles.editIconBadge}>
+                       <Icon name="plus" size={12} color="#FFF" />
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={styles.photoLabel}>Foto Perfil</Text>
+               </View>
+
+               <View style={styles.photoBox}>
+                  <TouchableOpacity 
+                    onPress={handleTakeFacePhoto} 
+                    style={[styles.avatarButton, !facePhoto && styles.requiredBorder]}
+                  >
+                    {facePhoto ? (
+                      <Image source={{ uri: facePhoto.uri }} style={styles.avatarImage} />
+                    ) : (
+                      <Icon name="camera" size={30} color={facePhoto ? "#9CA3AF" : "#4F46E5"} />
+                    )}
+                    <View style={[styles.editIconBadge, { backgroundColor: facePhoto ? '#10B981' : '#4F46E5' }]}>
+                       <Icon name={facePhoto ? "check" : "camera"} size={12} color="#FFF" />
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={[styles.photoLabel, { color: facePhoto ? '#10B981' : '#4F46E5', fontWeight: 'bold' }]}>
+                    Selfie Identidade *
+                  </Text>
+               </View>
+            </View>
+
             <TextInput 
-                marginTop={80}
                 style={styles.input} 
                 placeholder="Nome Completo" 
                 placeholderTextColor="#9CA3AF"
@@ -369,64 +431,27 @@ export default function SignUpScreen({ navigation, route }) {
                 <View style={styles.datePickerButton}>
                     <Icon name="calendar" size={20} color="#6B7280" />
                     <Text style={styles.datePickerText}>
-                        Data de Nascimento: {birthDate.toLocaleDateString('pt-BR')}
+                        Nascimento: {birthDate.toLocaleDateString('pt-BR')}
                     </Text>
                 </View>
             </TouchableOpacity>
 
-            {Platform.OS === 'ios' && (
-              <SlidingModal visible={showDatePicker} onClose={() => setShowDatePicker(false)}>
-                  <View style={styles.modalContent}>
-                    <View style={styles.modalHeader}>
-                        <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                            <Text style={{color: '#EF4444', fontSize: 16}}>Cancelar</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={confirmIOSDate}>
-                            <Text style={{color: '#4F46E5', fontSize: 16, fontWeight: 'bold'}}>Confirmar</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <DateTimePicker
-                        value={birthDate}
-                        mode="date"
-                        display="spinner"
-                        onChange={handleDateChange}
-                        maximumDate={new Date()}
-                        locale="pt-BR"
-                        textColor="black" 
-                    />
-                   </View>
-              </SlidingModal>
-            )}
-
-            {Platform.OS === 'android' && showDatePicker && (
-                <DateTimePicker
-                    value={birthDate}
-                    mode="date"
-                    display="spinner" 
-                    onChange={handleDateChange}
-                    maximumDate={new Date()}
-                />
-            )}
-
-            {/* 👇 CAMPO DE RESTRIÇÕES ALIMENTARES (BIO) 👇 */}
             <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Restrições Alimentares (Bio)</Text>
                 <TextInput 
-                    style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                    placeholder="Você tem alguma restrição alimentar? (Ex: Vegano, Alérgico a glúten...)" 
+                    style={[styles.input, { height: 70, textAlignVertical: 'top' }]} 
+                    placeholder="Vegano, Alérgico a glúten..." 
                     placeholderTextColor="#9CA3AF"
                     value={dietaryRestrictions} 
                     onChangeText={setDietaryRestrictions} 
                     multiline
                 />
             </View>
-            {/* 👆 FIM CAMPO BIO 👆 */}
 
-            {/* CONTAINER DE VALIDAÇÃO (ESTILO ACORDEÃO) */}
             <View style={styles.validatorContainer}>
                 <TouchableOpacity onPress={toggleValidator} style={styles.validatorHeader}>
                     <View>
-                        <Text style={styles.validatorLabel}>Por qual organização você quer ser validado?</Text>
+                        <Text style={styles.validatorLabel}>Validar por:</Text>
                         <Text style={styles.validatorValue}>{validatorOrganization}</Text>
                     </View>
                     <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
@@ -439,24 +464,11 @@ export default function SignUpScreen({ navigation, route }) {
                         {validatorOptions.map((org) => (
                             <TouchableOpacity 
                                 key={org} 
-                                style={[
-                                    styles.validatorOption, 
-                                    validatorOrganization === org && styles.validatorOptionSelected
-                                ]}
-                                onPress={() => {
-                                    setValidatorOrganization(org);
-                                    toggleValidator(); // Fecha após selecionar
-                                }}
+                                style={[styles.validatorOption, validatorOrganization === org && styles.validatorOptionSelected]}
+                                onPress={() => { setValidatorOrganization(org); toggleValidator(); }}
                             >
-                                <Text style={[
-                                    styles.validatorOptionText,
-                                    validatorOrganization === org && styles.validatorOptionTextSelected
-                                ]}>
-                                    {org}
-                                </Text>
-                                {validatorOrganization === org && (
-                                    <Icon name="check" size={18} color="#4F46E5" />
-                                )}
+                                <Text style={[styles.validatorOptionText, validatorOrganization === org && styles.validatorOptionTextSelected]}>{org}</Text>
+                                {validatorOrganization === org && <Icon name="check" size={18} color="#4F46E5" />}
                             </TouchableOpacity>
                         ))}
                     </View>
@@ -486,11 +498,20 @@ export default function SignUpScreen({ navigation, route }) {
               data={countries}
               keyExtractor={(item) => item.code}
               renderItem={renderCountryItem}
-              contentContainerStyle={{ paddingBottom: 20 }}
             />
          </View>
       </SlidingModal>
 
+      {showDatePicker && (
+        <DateTimePicker
+            value={birthDate}
+            mode="date"
+            display={Platform.OS === 'ios' ? "spinner" : "default"}
+            onChange={handleDateChange}
+            maximumDate={new Date()}
+            locale="pt-BR"
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -501,88 +522,62 @@ const styles = StyleSheet.create({
   headerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#1F2937' },
   
-  avatarContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
+  photoRow: { flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 24 },
+  photoBox: { alignItems: 'center' },
+  photoLabel: { marginTop: 8, fontSize: 12, color: '#6B7280' },
   avatarButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 85,
+    height: 85,
+    borderRadius: 43,
     backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
+    elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  avatarPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  requiredBorder: { borderColor: '#4F46E5', borderWidth: 2 },
+  avatarImage: { width: 85, height: 85, borderRadius: 43 },
   editIconBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     backgroundColor: '#4F46E5',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  avatarHint: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
 
+  formContainer: { gap: 12 },
   input: {
     backgroundColor: 'white',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
     fontSize: 16,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     color: '#1F2937'
   },
-  inputLabel: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '600',
-    marginBottom: 6,
-    marginTop: 0,
-  },
-  inputContainer: {
-    marginBottom: 8,
-  },
+  inputLabel: { fontSize: 13, color: '#374151', fontWeight: '600', marginBottom: 4 },
+  inputContainer: { marginBottom: 4 },
 
-  phoneContainer: { flexDirection: 'row', marginBottom: 16, gap: 12 },
+  phoneContainer: { flexDirection: 'row', gap: 10 },
   countrySelector: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
     paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB',
-    width: 100, justifyContent: 'space-between',
+    minWidth: 95, justifyContent: 'space-between',
   },
-  selectedFlag: { fontSize: 20 },
-  selectedCode: { fontSize: 16, color: '#374151', fontWeight: '500' },
-  phoneInput: {
-    flex: 1, backgroundColor: 'white', paddingVertical: 16, paddingHorizontal: 16,
-    borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: '#E5E7EB', color: '#1F2937'
-  },
+  selectedFlag: { fontSize: 18 },
+  selectedCode: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  phoneInput: { flex: 1, backgroundColor: 'white', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
 
   datePickerButton: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   datePickerText: { fontSize: 16, color: '#374151' },
@@ -592,93 +587,31 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    marginBottom: 16,
     overflow: 'hidden',
   },
-  validatorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: 'white',
-  },
-  validatorLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  validatorValue: {
-    fontSize: 16,
-    color: '#1F2937',
-    fontWeight: '500',
-  },
-  validatorList: {
-    padding: 8,
-    backgroundColor: '#F9FAFB',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  validatorOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  validatorOptionSelected: {
-    backgroundColor: '#EEF2FF',
-  },
-  validatorOptionText: {
-    fontSize: 15,
-    color: '#374151',
-  },
-  validatorOptionTextSelected: {
-    color: '#4F46E5',
-    fontWeight: '600',
-  },
+  validatorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
+  validatorLabel: { fontSize: 11, color: '#6B7280' },
+  validatorValue: { fontSize: 15, color: '#1F2937', fontWeight: '500' },
+  validatorList: { padding: 8, backgroundColor: '#F9FAFB', borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  validatorOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 8 },
+  validatorOptionSelected: { backgroundColor: '#EEF2FF' },
+  validatorOptionText: { fontSize: 14, color: '#374151' },
+  validatorOptionTextSelected: { color: '#4F46E5', fontWeight: '600' },
 
-  button: { backgroundColor: '#4F46E5', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 8 },
+  button: { backgroundColor: '#4F46E5', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
 
-  modalOverlayContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'black',
-  },
-  modalContentWrapper: {
-    width: '100%',
-  },
+  modalOverlayContainer: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'black' },
+  modalContentWrapper: { width: '100%' },
   modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: SCREEN_HEIGHT * 0.5,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 5,
+    backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    height: SCREEN_HEIGHT * 0.45, padding: 20
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-    paddingBottom: 12,
-  },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  countryItem: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
-  },
-  countryFlag: { fontSize: 24, marginRight: 12 },
-  countryName: { fontSize: 16, color: '#374151', flex: 1 },
-  countryCode: { fontSize: 16, color: '#6B7280', fontWeight: 'bold' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  countryItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  countryFlag: { fontSize: 22, marginRight: 12 },
+  countryName: { fontSize: 16, flex: 1 },
+  countryCode: { fontSize: 14, color: '#6B7280', fontWeight: 'bold' },
 });

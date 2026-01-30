@@ -84,47 +84,47 @@ api.interceptors.request.use(
 // ==========================================
 
 /**
- * Cadastro Robusto: Garante que restrições e organização sejam enviadas de forma clara
+ * Realiza o login do utilizador
+ */
+export const login = (email, password) => api.post('/auth/login', { email, password });
+
+/**
+ * Reenvia o e-mail de verificação caso o utilizador não o tenha recebido
+ */
+export const resendVerificationEmail = (email) => api.post('/auth/resend-verification', { email });
+
+/**
+ * Cadastro Robusto: Processa Avatar, Restrições e Username
  */
 export const signUp = async (userData) => {
-  // Criamos uma cópia limpa para manipular
   let finalData = { ...userData };
   
-  // Garantimos que o objeto metadata existe
   if (!finalData.metadata) finalData.metadata = {};
 
-  // 1. Username
   const fullName = finalData.name || finalData.metadata.full_name;
   if (fullName) {
-    const generated = generateUsername(fullName);
-    finalData.username = generated;
-    finalData.metadata.username = generated;
+    finalData.username = generateUsername(fullName);
+    finalData.metadata.username = finalData.username;
     finalData.metadata.full_name = fullName;
   }
 
-  // 2. Sincronização explícita para o metadata (usado pelo Trigger SQL)
-  // Certificamos que os campos estão tanto na raiz quanto no metadata para o backend ler
-  finalData.metadata.dietaryRestrictions = finalData.dietaryRestrictions || "";
-  finalData.metadata.validatorOrganization = finalData.validatorOrganization || "Qualquer";
-  finalData.metadata.birth_date = finalData.birth_date || null;
-  finalData.metadata.phone = finalData.phone || "";
-  finalData.metadata.invite_code = finalData.inviteCode || "";
-
-  // 3. Processamento de Imagem
   const imageUri = finalData.image || finalData.metadata.image;
+
   if (imageUri && typeof imageUri === 'string' && imageUri.startsWith('file://')) {
     try {
-      console.log("[API] Convertendo imagem para Base64...");
       const base64Image = await uriToBase64(imageUri);
       finalData.avatar_url = base64Image;
       finalData.metadata.avatar_url = base64Image;
       delete finalData.image;
+      delete finalData.metadata.image;
     } catch (err) {
-      console.error("[API] Falha ao processar imagem:", err);
+      console.error("[API] Falha ao processar imagem de cadastro:", err);
     }
   }
 
-  console.log("[API] Enviando cadastro para o Render...");
+  if (finalData.dietaryRestrictions) {
+    finalData.metadata.dietaryRestrictions = finalData.dietaryRestrictions;
+  }
 
   return api.post('/auth/signup', finalData);
 };
@@ -144,8 +144,29 @@ export const createEvent = (eventData) => api.post('/events', eventData);
 export const createMatch = (matchData) => api.post('/matches', matchData);
 export const getMatchById = (matchId) => api.get(`/matches?id=${matchId}`, noCacheConfig);
 export const updateMatchStatus = (matchId, status) => api.patch(`/matches/${matchId}`, { status });
-export const getMatchesForGuest = (guestId) => api.get(`/matches?guest_id=${guestId}`, noCacheConfig);
-export const getMatchesForHost = (hostId) => api.get(`/matches?host_id=${hostId}`, noCacheConfig);
+
+/**
+ * Envia uma avaliação para um match específico
+ */
+export const submitRating = (matchId, rating, rating_comment) => 
+  api.patch(`/matches/${matchId}`, { rating, rating_comment });
+
+/**
+ * Busca todos os matches vinculados ao usuário logado (usado para avaliação/feedback)
+ */
+export const getMyMatches = () => api.get('/matches', noCacheConfig);
+
+/**
+ * Busca matches para convidados
+ */
+export const getMatchesForGuest = (guestId) => 
+  api.get(`/matches?guest_id=${guestId}`, noCacheConfig);
+
+/**
+ * Busca matches para anfitriões
+ */
+export const getMatchesForHost = (hostId) => 
+  api.get(`/matches?host_id=${hostId}`, noCacheConfig);
 
 // --- Dependentes ---
 export const getDependents = () => api.get('/dependents', noCacheConfig);

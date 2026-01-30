@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -33,7 +33,7 @@ import Icon from "../ui/Icon";
 
 // Hooks, API & Utils
 import { toast } from "../../hooks/use-toast";
-import { createEvent } from "../../services/api";
+import { createEvent, getMatchesForGuest } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
 // Listas de Opções
@@ -54,47 +54,47 @@ const LANGUAGE_OPTIONS = [
   "Outros"
 ];
 
+// Lista de bairros atualizada conforme solicitação
 const saoPauloNeighborhoods = [
-  "Higienopolis",
-  "Santa Cecilia",
+  "Higienópolis/Santa Cecilia",
+  "Pacaembú",
+  "Perdizes",
+  "Bom Retiro",
+  "Jardins",
+  "Jardim das Perdizes",
   "Jardim Paulista",
   "Jardim Europa",
   "Vila Nova Conceição",
-  "Perdizes",
   "Vila Madalena",
   "Itaim Bibi",
   "Pompeia",
 ];
 
-// Componente para exibir idiomas (Múltipla escolha)
-const SelectedLanguages = ({ selected, onRemove }) => {
-  if (selected.length === 0) {
-    return <Text style={styles.placeholderText}>Nenhum idioma selecionado</Text>;
-  }
-  return (
-    <View style={styles.languageContainer}>
-      {selected.map((lang) => (
-        <View key={lang} style={styles.languageChipSelected}>
-          <Text style={styles.languageChipTextSelected}>{lang}</Text>
-          <TouchableOpacity
-            onPress={() => onRemove(lang)}
-            style={{ marginLeft: 8 }}
-          >
-            <Icon name="close-circle" size={16} color="white" />
-          </TouchableOpacity>
-        </View>
-      ))}
-    </View>
-  );
-};
-
 export default function CreateEventScreen({ navigation }) {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [guestDates, setGuestDates] = useState([]); // Armazena datas onde o user já é convidado confirmado
   
   // Controles de data
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+
+  // Busca eventos onde o utilizador já confirmou presença para evitar conflitos
+  useEffect(() => {
+    const fetchGuestStatus = async () => {
+      try {
+        const response = await getMatchesForGuest(user.id);
+        // Filtramos apenas os matches aceites e extraímos as datas (YYYY-MM-DD)
+        const confirmedDates = response.data
+          .filter(m => m.status === 'accepted' || m.status === 'ACCEPTED')
+          .map(m => new Date(m.event.date).toISOString().split('T')[0]);
+        setGuestDates(confirmedDates);
+      } catch (error) {
+        console.error("Erro ao procurar agenda de convidado:", error);
+      }
+    };
+    if (user?.id) fetchGuestStatus();
+  }, [user]);
 
   // Lógica de Data Inicial
   const getInitialValidDate = () => {
@@ -124,8 +124,6 @@ export default function CreateEventScreen({ navigation }) {
     targetAudience: [], 
     languages: ["Português"],
     mealType: getMealTypeForDate(initialDate), 
-    
-    // Endereço Simplificado (Apenas Bairro)
     neighborhood: "", 
   });
 
@@ -133,7 +131,6 @@ export default function CreateEventScreen({ navigation }) {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Handler para seleção de bairro único
   const handleNeighborhoodSelect = (neighborhood) => {
       setFormData(prev => ({
           ...prev,
@@ -156,7 +153,6 @@ export default function CreateEventScreen({ navigation }) {
         ...prev,
         date: selectedDate,
         mealType: day === 5 ? 'jantar' : 'almoço',
-        // Ajusta o prazo sugerido para 1 dia antes da nova data
         deadline: new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000)
       }));
     }
@@ -191,37 +187,19 @@ export default function CreateEventScreen({ navigation }) {
     });
   };
 
-  const addLanguage = (language) => {
-    if (!formData.languages.includes(language)) {
-      handleInputChange("languages", [...formData.languages, language]);
-    }
-  };
-
-  const removeLanguage = (language) => {
-    handleInputChange(
-      "languages",
-      formData.languages.filter((l) => l !== language)
-    );
-  };
-
-  const openLanguageModal = () => {
-    Alert.alert("Adicionar Idioma", "Selecione um idioma.", [
-      { text: "Português", onPress: () => addLanguage("Português") },
-      { text: "Inglês", onPress: () => addLanguage("Inglês") },
-      { text: "Hebraico", onPress: () => addLanguage("Hebraico") },
-      { text: "Iídiche", onPress: () => addLanguage("Iídiche") },
-      { text: "Espanhol", onPress: () => addLanguage("Espanhol") },
-      { text: "Outros", onPress: () => addLanguage("Outros") },
-      { text: "Cancelar", style: "cancel" },
-    ]);
-  };
-
   const handleSubmit = async () => {
-    // Validação
-    if (
-      !formData.title.trim() ||
-      !formData.neighborhood // Valida se um bairro foi selecionado
-    ) {
+    // 1. VALIDAÇÃO DE CONFLITO DE AGENDA
+    const selectedDateString = formData.date.toISOString().split('T')[0];
+    if (guestDates.includes(selectedDateString)) {
+      return toast({ 
+        type: "error", 
+        title: "Conflito de Agenda", 
+        description: "Você já tem um evento confirmado como convidado para este dia. Não é possível organizar um evento na mesma data." 
+      });
+    }
+
+    // Validação de campos obrigatórios
+    if (!formData.title.trim() || !formData.neighborhood) {
       return toast({ type: "error", title: "Campos obrigatórios", description: "Preencha o título e selecione um bairro." });
     }
 
@@ -245,13 +223,8 @@ export default function CreateEventScreen({ navigation }) {
         return toast({ type: "error", title: "Prazo inválido", description: "O prazo de inscrição deve ser ANTES do dia do evento." });
     }
 
-    if (deadlineDate < today) {
-         return toast({ type: "error", title: "Prazo no passado", description: "O prazo de inscrição não pode ser uma data passada." });
-    }
-
     setIsLoading(true);
     try {
-      // Como removemos o endereço privado, usamos o Bairro como endereço completo
       const full_address = `${formData.neighborhood}, São Paulo - SP`;
       const approximate_address = formData.neighborhood; 
 
@@ -294,13 +267,10 @@ export default function CreateEventScreen({ navigation }) {
         >
             <View style={styles.contentWrapper}>
               
-              {/* CARD 1: INFORMAÇÕES DO EVENTO */}
               <Card style={{ width: "100%", marginBottom: 20 }}>
                 <CardHeader>
                   <CardTitle>Informações do Evento</CardTitle>
-                  <CardDescription>
-                    Detalhes principais, data e público.
-                  </CardDescription>
+                  <CardDescription>Detalhes principais, data e público.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   
@@ -322,13 +292,11 @@ export default function CreateEventScreen({ navigation }) {
                     />
                   </View>
 
-                  {/* DATA DO EVENTO */}
                   <View style={styles.formSection}>
                     <Label>Data do Evento</Label>
                     {Platform.OS === "android" && (
                       <>
                         <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-                          {/* CORREÇÃO: "calendar" -> "calendar-month" */}
                           <Icon name="calendar-month" size={24} color="#374151" />
                           <Text style={styles.dateButtonText}>
                             {formData.date.toLocaleDateString("pt-BR")}
@@ -347,7 +315,6 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                     {Platform.OS === "ios" && (
                       <View style={styles.iosPickerContainer}>
-                        {/* CORREÇÃO: "calendar" -> "calendar-month" */}
                         <Icon name="calendar-month" size={24} color="#374151" />
                         <DateTimePicker
                           value={formData.date}
@@ -359,9 +326,7 @@ export default function CreateEventScreen({ navigation }) {
                         />
                       </View>
                     )}
-                    {/* Feedback Turno */}
                     <View style={styles.autoMealContainer}>
-                        {/* 👇 CORREÇÃO DOS ÍCONES SOL/LUA 👇 */}
                         <Icon 
                             name={formData.mealType === 'jantar' ? "weather-night" : "weather-sunny"} 
                             size={16} 
@@ -375,14 +340,11 @@ export default function CreateEventScreen({ navigation }) {
                     </View>
                   </View>
 
-                  {/* PRAZO LIMITE */}
                   <View style={styles.formSection}>
                     <Label>Data Limite para Inscrições</Label>
-                    <Text style={styles.helperText}>Até qual dia aceita pedidos?</Text>
                     {Platform.OS === "android" && (
                       <>
                         <TouchableOpacity onPress={() => setShowDeadlinePicker(true)} style={[styles.dateButton, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
-                          {/* CORREÇÃO: "clock" -> "clock-outline" */}
                           <Icon name="clock-outline" size={24} color="#D97706" />
                           <Text style={[styles.dateButtonText, { color: '#D97706', fontWeight: '600' }]}>
                             {formData.deadline.toLocaleDateString("pt-BR")}
@@ -401,7 +363,6 @@ export default function CreateEventScreen({ navigation }) {
                     )}
                     {Platform.OS === "ios" && (
                       <View style={[styles.iosPickerContainer, { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' }]}>
-                        {/* CORREÇÃO: "clock" -> "clock-outline" */}
                         <Icon name="clock-outline" size={24} color="#D97706" />
                         <DateTimePicker
                           value={formData.deadline}
@@ -481,13 +442,10 @@ export default function CreateEventScreen({ navigation }) {
                 </CardContent>
               </Card>
 
-              {/* CARD 2: ENDEREÇO (Apenas Bairros de SP) */}
               <Card style={{ width: "100%" }}>
                 <CardHeader>
                   <CardTitle>Endereço</CardTitle>
-                  <CardDescription>
-                    Selecione o bairro onde ocorrerá o evento.
-                  </CardDescription>
+                  <CardDescription>Seleccione o bairro onde ocorrerá o evento.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <View style={styles.formSection}>
@@ -509,25 +467,16 @@ export default function CreateEventScreen({ navigation }) {
                         );
                       })}
                     </View>
-                    <Text style={styles.helperText}>
-                       Este bairro será exibido publicamente para os interessados.
-                    </Text>
                   </View>
                 </CardContent>
               </Card>
 
-              {/* Botão Criar */}
               <View style={{ width: "100%", marginTop: 20 }}>
                 <Button
                   onPress={handleSubmit}
                   disabled={isLoading}
                   variant="host"
-                  style={{ 
-                    width: "100%", 
-                    alignItems: "center", 
-                    justifyContent: "center",
-                    flexDirection: "row" 
-                  }}
+                  style={{ width: "100%", alignItems: "center", justifyContent: "center", flexDirection: "row" }}
                 >
                   {isLoading ? (
                     <LoadingSpinner size="small" color="#FFFFFF" />
@@ -551,114 +500,14 @@ const styles = StyleSheet.create({
   contentWrapper: { width: "100%", maxWidth: 700, alignItems: 'center' },
   formSection: { gap: 8, marginBottom: 16 },
   helperText: { fontSize: 12, color: "#6B7280", marginTop: 4 },
-  dateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    backgroundColor: "white",
-    gap: 8,
-  },
+  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, backgroundColor: "white", gap: 8 },
   dateButtonText: { fontSize: 16, color: "#374151" },
-  iosPickerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingTop: 8,
-    paddingLeft: 4,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: "white",
-  },
-  placeholderText: { color: "#6B7280", fontStyle: "italic" },
-  
-  languageContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 4,
-  },
-  languageChipSelected: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    backgroundColor: "#4F46E5",
-  },
-  languageChipTextSelected: { color: "white", fontWeight: "500" },
-  
-  mealTypeContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  mealTypeTag: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#D1D5DB', 
-    backgroundColor: '#FFFFFF',
-  },
-  mealTypeTagSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#4F46E5',
-  },
-  mealTypeTagText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  mealTypeTagTextSelected: {
-    color: '#FFFFFF',
-  },
-
-  autoMealContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      marginTop: 8,
-      backgroundColor: '#EEF2FF',
-      padding: 8,
-      borderRadius: 6,
-      alignSelf: 'flex-start'
-  },
-  autoMealText: {
-      color: '#4F46E5',
-      fontSize: 13,
-      fontWeight: '600'
-  },
-
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#F9FAFB',
-  },
-  chipSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#4F46E5',
-  },
-  chipText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  chipTextSelected: {
-    color: '#FFFFFF',
-  },
+  iosPickerContainer: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 8, paddingLeft: 4, borderColor: "#E5E7EB", borderRadius: 8, borderWidth: 1, backgroundColor: "white" },
+  autoMealContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: '#EEF2FF', padding: 8, borderRadius: 6, alignSelf: 'flex-start' },
+  autoMealText: { color: '#4F46E5', fontSize: 13, fontWeight: '600' },
+  chipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#F9FAFB' },
+  chipSelected: { borderColor: '#4F46E5', backgroundColor: '#4F46E5' },
+  chipText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  chipTextSelected: { color: '#FFFFFF' },
 });

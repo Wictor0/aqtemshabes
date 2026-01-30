@@ -43,7 +43,7 @@ export default function Header() {
           style={styles.logo}
         />
         <View>
-           <Text style={styles.headerTitle}>Aquitemshabes</Text>
+           <Text style={styles.headerTitle}>AquiTemShabes</Text>
            <Text style={styles.headerSubtitle}>
   Shalom, {
     (user?.user_metadata?.full_name || user?.user_metadata?.name || "Visitante").split(" ")[0]

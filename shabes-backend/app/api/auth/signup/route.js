@@ -5,7 +5,7 @@ import { sendAdminNotification } from '../../../../lib/emailService';
 
 /**
  * Rota de Cadastro robusta.
- * Garante que a imagem seja mapeada para 'avatar_url' e os metadados (Bio/Validação) sejam persistidos.
+ * Agora suporta 'avatar_url' (foto de perfil) e 'face_photo_url' (foto de identificação).
  */
 export async function POST(request) {
   try {
@@ -16,8 +16,9 @@ export async function POST(request) {
     const email = (body.email || meta.email)?.trim().toLowerCase();
     const password = body.password;
     
-    // CAPTURA DA IMAGEM: Procuramos por 'image' ou 'avatar_url' em qualquer nível do JSON
-    const image = body.image || meta.image || body.avatar_url || meta.avatar_url || null;
+    // CAPTURA DAS IMAGENS: Suporta 'image', 'avatar_url' e a nova 'face_photo_url'
+    const avatar_url = body.avatar_url || meta.avatar_url || body.image || meta.image || null;
+    const face_photo_url = body.face_photo_url || meta.face_photo_url || null;
     
     // Montamos o objeto de dados que irá para o raw_user_meta_data do Supabase Auth
     const userData = {
@@ -38,9 +39,8 @@ export async function POST(request) {
       invite_code: body.inviteCode || meta.invite_code || "",
       
       // --- CHAVES CRÍTICAS PARA O TRIGGER SQL ---
-      // O seu Trigger SQL usa: raw_meta->>'avatar_url'
-      avatar_url: image, 
-      // O seu Trigger SQL usa: raw_meta->>'birth_date'
+      avatar_url: avatar_url, 
+      face_photo_url: face_photo_url, // Nova coluna no banco
       birth_date: body.birth_date || meta.birth_date || body.birthDate || meta.birthDate || null,
     };
 
@@ -50,13 +50,6 @@ export async function POST(request) {
     const redirectTo = `${SITE_URL}/api/auth/confirm`;
 
     console.log(`[AUTH-SIGNUP] Processando cadastro: ${email}`);
-    
-    if (image) {
-      console.log(`[AUTH-SIGNUP] Foto detectada. Tamanho da string: ${image.length} caracteres.`);
-      if (image.length > 50000) {
-        console.warn("[AUTH-SIGNUP] AVISO: Imagem grande detectada.");
-      }
-    }
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
@@ -77,7 +70,7 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    // 2. ENVIO DE E-MAIL PARA ADMIN (CORRIGIDO COM OS NOVOS DADOS)
+    // 2. ENVIO DE E-MAIL PARA ADMIN (INCLUINDO A FOTO DE ROSTO)
     if (data.user) {
         const emailText = `🚀 Um novo usuário se cadastrou e aguarda aprovação.\n\n` +
                           `▪ Nome: ${userData.name}\n` +
@@ -85,9 +78,10 @@ export async function POST(request) {
                           `▪ Nascimento: ${userData.birth_date || 'Não informado'}\n` +
                           `▪ Restrições Alimentares (Bio): ${userData.dietaryRestrictions || 'Nenhuma'}\n` + 
                           `▪ Organização de Validação: ${userData.validatorOrganization}\n` + 
-                          `▪ Telefone: ${userData.phone}`;
+                          `▪ Telefone: ${userData.phone}\n\n` +
+                          `📸 Foto de Identidade (Rosto): ${face_photo_url ? face_photo_url : 'Não enviada'}`;
         
-        // Dispara a notificação para o admin
+        // Dispara a notificação para o admin (aquitemshabes@gmail.com)
         sendAdminNotification('🚀 Novo Usuário Cadastrado (Pendente)', emailText)
             .catch(err => console.error("Falha ao enviar notificação para Admin:", err));
     }
