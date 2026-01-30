@@ -4,12 +4,12 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendAdminNotification } from '../../../../lib/emailService';
 
-// Forçamos a rota a ser dinâmica para evitar falhas no build do Next.js ao detetar o uso de cookies
+// Forçamos a rota a ser dinâmica para evitar falhas no build do Next.js ao detectar o uso de cookies
 export const dynamic = 'force-dynamic';
 
 /**
  * Cliente Supabase com privilégios de Admin (Service Role)
- * Inicializado dentro de uma função ou com verificação para evitar erros se as envs não estiverem prontas no build
+ * Inicializado de forma a evitar falhas se as variáveis não estiverem prontas no build
  */
 const getSupabaseAdmin = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,9 +19,17 @@ const getSupabaseAdmin = () => {
     console.error("[AUTH-SIGNUP] Erro: Variáveis de ambiente do Supabase ausentes.");
     return null;
   }
-  return createClient(url, key);
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
 };
 
+/**
+ * Upload de imagem Base64 para o Storage
+ */
 async function uploadBase64Image(supabaseAdmin, base64Data, filePath) {
   try {
     if (!supabaseAdmin || !base64Data || typeof base64Data !== 'string' || base64Data.length < 100) {
@@ -34,7 +42,7 @@ async function uploadBase64Image(supabaseAdmin, base64Data, filePath) {
     
     const buffer = Buffer.from(base64Body, 'base64');
     
-    const { data, error } = await supabaseAdmin.storage
+    const { error } = await supabaseAdmin.storage
       .from('avatars')
       .upload(filePath, buffer, {
         contentType: 'image/png',
@@ -61,25 +69,26 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const meta = body.metadata || {};
-    const email = (body.email || meta.email)?.trim().toLowerCase();
+    const email = (body.email || meta.email || body.email)?.trim().toLowerCase();
     const password = body.password;
     
-    const avatarBase64 = body.avatar_url || meta.avatar_url || null;
-    const facePhotoBase64 = body.face_photo_url || meta.face_photo_url || null;
+    const avatarBase64 = body.avatar_url || meta.avatar_url || body.image || null;
+    const facePhotoBase64 = body.face_photo_url || meta.face_photo_url || body.facePhoto || null;
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
 
+    // Inicialização dos clientes
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
     const supabaseAdmin = getSupabaseAdmin();
 
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: "Configuração do servidor incompleta." }, { status: 500 });
+      return NextResponse.json({ error: "Configuração do servidor incompleta (Service Role)." }, { status: 500 });
     }
 
-    // 1. SignUp no Auth
+    // 1. SignUp no Auth (Trigger SQL criará o perfil como 'pending')
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -99,7 +108,7 @@ export async function POST(request) {
     });
 
     if (error) {
-      console.error('[AUTH-SIGNUP] Erro no registo:', error.message);
+      console.error('[AUTH-SIGNUP] Erro Supabase Auth:', error.message);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -107,7 +116,7 @@ export async function POST(request) {
     let finalAvatarUrl = null;
     let finalFaceUrl = null;
 
-    // 2. Processamento das imagens via Admin
+    // 2. Processamento das imagens via Admin (Ignora RLS)
     if (userId) {
         if (avatarBase64) {
           finalAvatarUrl = await uploadBase64Image(supabaseAdmin, avatarBase64, `${userId}/profile/avatar.png`);
@@ -116,7 +125,7 @@ export async function POST(request) {
           finalFaceUrl = await uploadBase64Image(supabaseAdmin, facePhotoBase64, `${userId}/verification/face.png`);
         }
 
-        // 3. Atualização forçada via Admin
+        // 3. Atualização forçada dos links na tabela Profiles
         const updateFields = {};
         if (finalAvatarUrl) updateFields.avatar_url = finalAvatarUrl;
         if (finalFaceUrl) updateFields.face_photo_url = finalFaceUrl;
@@ -133,16 +142,17 @@ export async function POST(request) {
         }
     }
 
-    // 4. Notificação por E-mail
+    // 4. Notificação por E-mail Administrativo
     if (data.user) {
         const emailText = `🚀 Novo registo para aprovação.\n\n` +
                           `▪ Nome: ${body.name || meta.full_name || 'Novo Utilizador'}\n` +
                           `▪ Email: ${email}\n` +
                           `▪ Telefone: ${body.phone || meta.phone || 'N/A'}\n\n` +
-                          `📸 FOTO ROSTO: ${finalFaceUrl || '⚠️ Falha no upload'}\n` +
-                          `👤 FOTO PERFIL: ${finalAvatarUrl || '⚠️ Falha no upload'}`;
+                          `📸 FOTO ROSTO: ${finalFaceUrl || '⚠️ Erro no processamento'}\n` +
+                          `👤 FOTO PERFIL: ${finalAvatarUrl || '⚠️ Erro no processamento'}\n\n` +
+                          `Gestão: https://supabase.com/dashboard/project/cafuulfswdjcpenmdutn/editor/table/profiles?filter=id%3Deq.${userId}`;
         
-        sendAdminNotification('🚀 Novo Utilizador Cadastrado', emailText)
+        sendAdminNotification('🚀 Novo Usuário Cadastrado', emailText)
             .catch(err => console.error("[EMAIL-ERR] Falha ao enviar notificação:", err));
     }
 
