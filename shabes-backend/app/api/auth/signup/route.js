@@ -16,9 +16,11 @@ export async function POST(request) {
     const email = (body.email || meta.email)?.trim().toLowerCase();
     const password = body.password;
     
-    // CAPTURA DAS IMAGENS: Suporta 'image', 'avatar_url' e a nova 'face_photo_url'
+    // CAPTURA DAS IMAGENS: 
+    // Procuramos por 'avatar_url' ou 'image' para a foto de perfil.
+    // Procuramos por 'face_photo_url' ou 'facePhoto' para a selfie de identificação.
     const avatar_url = body.avatar_url || meta.avatar_url || body.image || meta.image || null;
-    const face_photo_url = body.face_photo_url || meta.face_photo_url || null;
+    const face_photo_url = body.face_photo_url || meta.face_photo_url || body.facePhoto || null;
     
     // Montamos o objeto de dados que irá para o raw_user_meta_data do Supabase Auth
     const userData = {
@@ -40,7 +42,7 @@ export async function POST(request) {
       
       // --- CHAVES CRÍTICAS PARA O TRIGGER SQL ---
       avatar_url: avatar_url, 
-      face_photo_url: face_photo_url, // Nova coluna no banco
+      face_photo_url: face_photo_url, 
       birth_date: body.birth_date || meta.birth_date || body.birthDate || meta.birthDate || null,
     };
 
@@ -56,12 +58,13 @@ export async function POST(request) {
     }
 
     // 1. Realizamos o SignUp no Supabase Auth
+    // O Supabase guarda o objeto userData no campo 'raw_user_meta_data'
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: redirectTo,
-        data: userData, // O Supabase guarda isto no campo 'raw_user_meta_data'
+        data: userData, 
       },
     });
 
@@ -72,6 +75,20 @@ export async function POST(request) {
 
     // 2. ENVIO DE E-MAIL PARA ADMIN (INCLUINDO A FOTO DE ROSTO)
     if (data.user) {
+        // Formata a exibição da foto no e-mail
+        // Se for Base64, ela aparecerá como uma string longa (o admin pode copiar e ver num site de visualização de base64)
+        // Se for uma URL, aparecerá como link clicável.
+        let facePhotoDisplay = "Não enviada";
+        if (face_photo_url) {
+            if (face_photo_url === "pending_upload") {
+                facePhotoDisplay = "Aguardando upload do dispositivo (verifique o banco de dados em instantes)";
+            } else if (face_photo_url.startsWith('data:image')) {
+                facePhotoDisplay = "[Imagem em Base64 anexada aos metadados]";
+            } else {
+                facePhotoDisplay = face_photo_url;
+            }
+        }
+
         const emailText = `🚀 Um novo usuário se cadastrou e aguarda aprovação.\n\n` +
                           `▪ Nome: ${userData.name}\n` +
                           `▪ Email: ${email}\n` +
@@ -79,7 +96,7 @@ export async function POST(request) {
                           `▪ Restrições Alimentares (Bio): ${userData.dietaryRestrictions || 'Nenhuma'}\n` + 
                           `▪ Organização de Validação: ${userData.validatorOrganization}\n` + 
                           `▪ Telefone: ${userData.phone}\n\n` +
-                          `📸 Foto de Identidade (Rosto): ${face_photo_url ? face_photo_url : 'Não enviada'}`;
+                          `📸 Foto de Identidade (Rosto): ${facePhotoDisplay}`;
         
         // Dispara a notificação para o admin (aquitemshabes@gmail.com)
         sendAdminNotification('🚀 Novo Usuário Cadastrado (Pendente)', emailText)
