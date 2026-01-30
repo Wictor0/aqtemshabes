@@ -58,7 +58,6 @@ export async function POST(request) {
     }
 
     // 1. Realizamos o SignUp no Supabase Auth
-    // O Supabase guarda o objeto userData no campo 'raw_user_meta_data'
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -75,17 +74,16 @@ export async function POST(request) {
 
     // 2. ENVIO DE E-MAIL PARA ADMIN (INCLUINDO A FOTO DE ROSTO)
     if (data.user) {
-        // Formata a exibição da foto no e-mail
-        // Se for Base64, ela aparecerá como uma string longa (o admin pode copiar e ver num site de visualização de base64)
-        // Se for uma URL, aparecerá como link clicável.
         let facePhotoDisplay = "Não enviada";
+        
         if (face_photo_url) {
             if (face_photo_url === "pending_upload") {
-                facePhotoDisplay = "Aguardando upload do dispositivo (verifique o banco de dados em instantes)";
-            } else if (face_photo_url.startsWith('data:image')) {
-                facePhotoDisplay = "[Imagem em Base64 anexada aos metadados]";
-            } else {
+                // Se o frontend ainda está a subir a foto, o admin pode ver no banco depois.
+                facePhotoDisplay = "⏳ Upload em curso pelo telemóvel... (Aceda ao Dashboard para ver a imagem final)";
+            } else if (face_photo_url.startsWith('http')) {
                 facePhotoDisplay = face_photo_url;
+            } else {
+                facePhotoDisplay = "[Imagem enviada via metadados]";
             }
         }
 
@@ -93,12 +91,12 @@ export async function POST(request) {
                           `▪ Nome: ${userData.name}\n` +
                           `▪ Email: ${email}\n` +
                           `▪ Nascimento: ${userData.birth_date || 'Não informado'}\n` +
-                          `▪ Restrições Alimentares (Bio): ${userData.dietaryRestrictions || 'Nenhuma'}\n` + 
+                          `▪ Restrições Alimentares: ${userData.dietaryRestrictions || 'Nenhuma'}\n` + 
                           `▪ Organização de Validação: ${userData.validatorOrganization}\n` + 
                           `▪ Telefone: ${userData.phone}\n\n` +
-                          `📸 Foto de Identidade (Rosto): ${facePhotoDisplay}`;
+                          `📸 Foto de Identidade (Rosto): ${facePhotoDisplay}\n\n` +
+                          `Link do Perfil no Banco: https://supabase.com/dashboard/project/cafuulfswdjcpenmdutn/editor/table/profiles?filter=id%3Deq.${data.user.id}`;
         
-        // Dispara a notificação para o admin (aquitemshabes@gmail.com)
         sendAdminNotification('🚀 Novo Usuário Cadastrado (Pendente)', emailText)
             .catch(err => console.error("Falha ao enviar notificação para Admin:", err));
     }
