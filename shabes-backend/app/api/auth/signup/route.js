@@ -24,6 +24,7 @@ async function uploadBase64Image(supabase, base64Data, filePath) {
     console.log(`[STORAGE] A processar upload para ${filePath}. Tamanho final: ${buffer.length} bytes.`);
 
     // Realiza o upload no bucket 'avatars'
+    // Usamos upsert: true para sobrescrever caso já exista
     const { data, error } = await supabase.storage
       .from('avatars')
       .upload(filePath, buffer, {
@@ -71,7 +72,7 @@ export async function POST(request) {
     const supabase = createRouteHandlerClient({ cookies });
 
     // 1. Criar o utilizador no Supabase Auth
-    // Inserimos 'processing' inicialmente para que o Trigger SQL não falhe, mas saberemos que o backend vai atualizar a seguir.
+    // Inserimos 'processing' inicialmente para que o Trigger SQL não falhe.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -114,18 +115,20 @@ export async function POST(request) {
         }
 
         // 3. Atualizar a tabela 'profiles' com as URLs finais clicáveis
+        // IMPORTANTE: Este passo pode falhar se o RLS não permitir UPDATE para o utilizador
         const updateFields = {};
         if (finalAvatarUrl) updateFields.avatar_url = finalAvatarUrl;
         if (finalFaceUrl) updateFields.face_photo_url = finalFaceUrl;
 
         if (Object.keys(updateFields).length > 0) {
+            console.log(`[AUTH-SIGNUP] A tentar atualizar a tabela profiles com:`, updateFields);
             const { error: profileError } = await supabase
                 .from('profiles')
                 .update(updateFields)
                 .eq('id', userId);
             
             if (profileError) {
-                console.error("[AUTH-SIGNUP] Erro ao atualizar URLs na tabela profiles:", profileError.message);
+                console.error("[AUTH-SIGNUP] ERRO DE RLS/BANCO ao atualizar tabela profiles:", profileError.message);
             } else {
                 console.log("[AUTH-SIGNUP] Banco de dados atualizado com as URLs das fotos.");
             }
@@ -139,8 +142,8 @@ export async function POST(request) {
                           `▪ Email: ${email}\n` +
                           `▪ Organização de Validação: ${body.validatorOrganization || meta.validatorOrganization || 'Qualquer'}\n` + 
                           `▪ Telefone: ${body.phone || meta.phone || 'N/A'}\n\n` +
-                          `📸 FOTO DE ROSTO: ${finalFaceUrl || '⚠️ Falha no processamento ou não enviada'}\n` +
-                          `👤 FOTO DE PERFIL: ${finalAvatarUrl || '⚠️ Falha no processamento ou não enviada'}\n\n` +
+                          `📸 FOTO DE ROSTO: ${finalFaceUrl ? finalFaceUrl : '⚠️ Falha no upload/processamento'}\n` +
+                          `👤 FOTO DE PERFIL: ${finalAvatarUrl ? finalAvatarUrl : '⚠️ Falha no upload/processamento'}\n\n` +
                           `Aceda ao Supabase para gerir o perfil: https://supabase.com/dashboard/project/cafuulfswdjcpenmdutn/editor/table/profiles?filter=id%3Deq.${userId}`;
         
         sendAdminNotification('🚀 Novo Utilizador Cadastrado (Pendente)', emailText)
