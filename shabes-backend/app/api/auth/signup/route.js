@@ -1,21 +1,32 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js'; // Importação necessária para o cliente Admin
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sendAdminNotification } from '../../../../lib/emailService';
 
+// Forçamos a rota a ser dinâmica para evitar falhas no build do Next.js ao detetar o uso de cookies
+export const dynamic = 'force-dynamic';
+
 /**
  * Cliente Supabase com privilégios de Admin (Service Role)
- * Isto permite ignorar o RLS e atualizar a tabela profiles mesmo antes do email ser confirmado.
+ * Inicializado dentro de uma função ou com verificação para evitar erros se as envs não estiverem prontas no build
  */
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // Certifique-se de que esta variável está no Render
-);
+const getSupabaseAdmin = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!url || !key) {
+    console.error("[AUTH-SIGNUP] Erro: Variáveis de ambiente do Supabase ausentes.");
+    return null;
+  }
+  return createClient(url, key);
+};
 
-async function uploadBase64Image(supabase, base64Data, filePath) {
+async function uploadBase64Image(supabaseAdmin, base64Data, filePath) {
   try {
-    if (!base64Data || typeof base64Data !== 'string' || base64Data.length < 100) return null;
+    if (!supabaseAdmin || !base64Data || typeof base64Data !== 'string' || base64Data.length < 100) {
+      return null;
+    }
 
     const base64Body = base64Data.includes(';base64,') 
       ? base64Data.split(';base64,')[1] 
@@ -23,7 +34,6 @@ async function uploadBase64Image(supabase, base64Data, filePath) {
     
     const buffer = Buffer.from(base64Body, 'base64');
     
-    // Fazemos o upload usando o cliente Admin para garantir sucesso
     const { data, error } = await supabaseAdmin.storage
       .from('avatars')
       .upload(filePath, buffer, {
@@ -58,13 +68,18 @@ export async function POST(request) {
     const facePhotoBase64 = body.face_photo_url || meta.face_photo_url || null;
 
     if (!email || !password) {
-      return NextResponse.json({ error: "Email e senha obrigatórios." }, { status: 400 });
+      return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
 
-    // Cliente para Auth (com cookies do utilizador)
-    const supabase = createRouteHandlerClient({ cookies });
+    const cookieStore = cookies();
+    const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
+    const supabaseAdmin = getSupabaseAdmin();
 
-    // 1. SignUp no Auth (O Trigger SQL criará a linha com 'processing')
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: "Configuração do servidor incompleta." }, { status: 500 });
+    }
+
+    // 1. SignUp no Auth
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -83,51 +98,58 @@ export async function POST(request) {
       },
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) {
+      console.error('[AUTH-SIGNUP] Erro no registo:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
 
     const userId = data.user?.id;
     let finalAvatarUrl = null;
     let finalFaceUrl = null;
 
-    // 2. Processamento das imagens via Admin (Garante sucesso no Storage)
+    // 2. Processamento das imagens via Admin
     if (userId) {
-        if (avatarBase64) finalAvatarUrl = await uploadBase64Image(supabase, avatarBase64, `${userId}/profile/avatar.png`);
-        if (facePhotoBase64) finalFaceUrl = await uploadBase64Image(supabase, facePhotoBase64, `${userId}/verification/face.png`);
+        if (avatarBase64) {
+          finalAvatarUrl = await uploadBase64Image(supabaseAdmin, avatarBase64, `${userId}/profile/avatar.png`);
+        }
+        if (facePhotoBase64) {
+          finalFaceUrl = await uploadBase64Image(supabaseAdmin, facePhotoBase64, `${userId}/verification/face.png`);
+        }
 
-        // 3. Atualização forçada na tabela Profiles usando o Cliente Admin
-        // Isto ignora o RLS e substitui o "processing" pelo link real
+        // 3. Atualização forçada via Admin
         const updateFields = {};
         if (finalAvatarUrl) updateFields.avatar_url = finalAvatarUrl;
         if (finalFaceUrl) updateFields.face_photo_url = finalFaceUrl;
 
         if (Object.keys(updateFields).length > 0) {
-            console.log(`[AUTH-SIGNUP] A forçar atualização do perfil ${userId} via Admin...`);
             const { error: profileError } = await supabaseAdmin
                 .from('profiles')
                 .update(updateFields)
                 .eq('id', userId);
             
-            if (profileError) console.error("[AUTH-SIGNUP] Erro Admin Update:", profileError.message);
+            if (profileError) {
+              console.error("[AUTH-SIGNUP] Erro ao atualizar perfil via Admin:", profileError.message);
+            }
         }
     }
 
-    // 4. E-mail Administrativo
+    // 4. Notificação por E-mail
     if (data.user) {
         const emailText = `🚀 Novo registo para aprovação.\n\n` +
-                          `▪ Nome: ${body.name || meta.full_name}\n` +
+                          `▪ Nome: ${body.name || meta.full_name || 'Novo Utilizador'}\n` +
                           `▪ Email: ${email}\n` +
                           `▪ Telefone: ${body.phone || meta.phone || 'N/A'}\n\n` +
-                          `📸 FOTO ROSTO: ${finalFaceUrl || '⚠️ Erro no upload'}\n` +
-                          `👤 FOTO PERFIL: ${finalAvatarUrl || '⚠️ Erro no upload'}`;
+                          `📸 FOTO ROSTO: ${finalFaceUrl || '⚠️ Falha no upload'}\n` +
+                          `👤 FOTO PERFIL: ${finalAvatarUrl || '⚠️ Falha no upload'}`;
         
-        sendAdminNotification('🚀 Novo Usuário Cadastrado', emailText)
-            .catch(err => console.error("[EMAIL-ERR]", err));
+        sendAdminNotification('🚀 Novo Utilizador Cadastrado', emailText)
+            .catch(err => console.error("[EMAIL-ERR] Falha ao enviar notificação:", err));
     }
 
     return NextResponse.json({ message: 'Sucesso', user: data.user });
 
   } catch (e) {
-    console.error('[AUTH-SIGNUP] Erro Crítico:', e);
-    return NextResponse.json({ error: 'Erro interno.' }, { status: 500 });
+    console.error('[AUTH-SIGNUP] Erro Crítico Inesperado:', e);
+    return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
   }
 }
