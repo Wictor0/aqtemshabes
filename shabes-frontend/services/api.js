@@ -24,7 +24,7 @@ const noCacheConfig = {
 // --- FUNÇÕES AUXILIARES ---
 
 /**
- * Converte um URI local (file://) em string Base64 real para envio
+ * Converte um URI local (file://) em string Base64 real para envio ao servidor
  */
 const uriToBase64 = async (uri) => {
   try {
@@ -94,36 +94,55 @@ export const login = (email, password) => api.post('/auth/login', { email, passw
 export const resendVerificationEmail = (email) => api.post('/auth/resend-verification', { email });
 
 /**
- * Cadastro Robusto: Processa Avatar, Restrições e Username
+ * Cadastro Robusto: Processa Avatar, Foto de Rosto, Restrições e Username
  */
 export const signUp = async (userData) => {
   let finalData = { ...userData };
   
   if (!finalData.metadata) finalData.metadata = {};
 
+  // 1. Geração de Username
   const fullName = finalData.name || finalData.metadata.full_name;
   if (fullName) {
-    finalData.username = generateUsername(fullName);
-    finalData.metadata.username = finalData.username;
+    const generated = generateUsername(fullName);
+    finalData.username = generated;
+    finalData.metadata.username = generated;
     finalData.metadata.full_name = fullName;
   }
 
-  const imageUri = finalData.image || finalData.metadata.image;
-
-  if (imageUri && typeof imageUri === 'string' && imageUri.startsWith('file://')) {
+  // 2. Processamento da Foto de Perfil (Avatar)
+  const avatarUri = finalData.image || finalData.avatar_url || (finalData.metadata && finalData.metadata.image);
+  if (avatarUri && typeof avatarUri === 'string' && avatarUri.startsWith('file://')) {
     try {
-      const base64Image = await uriToBase64(imageUri);
-      finalData.avatar_url = base64Image;
-      finalData.metadata.avatar_url = base64Image;
+      console.log("[API] Convertendo Avatar...");
+      const base64Avatar = await uriToBase64(avatarUri);
+      finalData.avatar_url = base64Avatar;
+      finalData.metadata.avatar_url = base64Avatar;
       delete finalData.image;
-      delete finalData.metadata.image;
     } catch (err) {
-      console.error("[API] Falha ao processar imagem de cadastro:", err);
+      console.error("[API] Falha ao processar Avatar:", err);
     }
   }
 
+  // 3. Processamento da Foto de Rosto (Selfie de Identidade)
+  const facePhotoUri = finalData.face_photo_url;
+  if (facePhotoUri && typeof facePhotoUri === 'string' && facePhotoUri.startsWith('file://')) {
+    try {
+      console.log("[API] Convertendo Foto de Rosto...");
+      const base64Face = await uriToBase64(facePhotoUri);
+      finalData.face_photo_url = base64Face;
+    } catch (err) {
+      console.error("[API] Falha ao processar Foto de Rosto:", err);
+    }
+  }
+
+  // 4. Sincronização de Metadados Adicionais
   if (finalData.dietaryRestrictions) {
     finalData.metadata.dietaryRestrictions = finalData.dietaryRestrictions;
+  }
+  
+  if (finalData.validatorOrganization) {
+    finalData.metadata.validatorOrganization = finalData.validatorOrganization;
   }
 
   return api.post('/auth/signup', finalData);
@@ -146,13 +165,19 @@ export const getMatchById = (matchId) => api.get(`/matches?id=${matchId}`, noCac
 export const updateMatchStatus = (matchId, status) => api.patch(`/matches/${matchId}`, { status });
 
 /**
+ * Busca todos os convidados ACEITOS de um evento (Usado para o PDF/Carômetro)
+ */
+export const getAcceptedGuestsByEvent = (eventId) => 
+  api.get(`/matches?event_id=${eventId}&status=accepted`, noCacheConfig);
+
+/**
  * Envia uma avaliação para um match específico
  */
 export const submitRating = (matchId, rating, rating_comment) => 
   api.patch(`/matches/${matchId}`, { rating, rating_comment });
 
 /**
- * Busca todos os matches vinculados ao usuário logado (usado para avaliação/feedback)
+ * Busca todos os matches vinculados ao usuário logado
  */
 export const getMyMatches = () => api.get('/matches', noCacheConfig);
 

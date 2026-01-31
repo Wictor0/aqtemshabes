@@ -17,6 +17,10 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Checkbox from 'expo-checkbox';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+// 👇 Importação corrigida para evitar o erro de deprecation no Expo SDK
+import * as FileSystem from 'expo-file-system/legacy'; 
 
 // UI Components
 import { Button } from "../ui/Button";
@@ -25,16 +29,25 @@ import { Badge } from "../ui/Badge";
 import { Textarea } from "../ui/Textarea";
 import LoadingSpinner from "../ui/LoadingSpinner";
 import Icon from "../ui/Icon";
-// 👇 Importação do Selo
 import VerifiedBadge from "../ui/VerifiedBadge";
 
 // Hooks, API & Utils
 import { useAuth } from "../../context/AuthContext";
-import { getEventById, createMatch, getDependents, getMatchById, updateMatchStatus, getEvents } from "../../services/api"; 
+import { 
+  getEventById, 
+  createMatch, 
+  getDependents, 
+  getMatchById, 
+  updateMatchStatus, 
+  getEvents,
+  getAcceptedGuestsByEvent 
+} from "../../services/api"; 
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
+// 👇 Importação dos serviços de notificação (Local e Remoto)
+import { showLocalNotification, sendPushNotification } from "../../services/notificationService";
 
-// 👇 MAPAS DE TRADUÇÃO ATUALIZADOS E COMPLETOS
+// MAPAS DE TRADUÇÃO ATUALIZADOS E COMPLETOS
 const targetAudienceLabels = {
   "any": "Qualquer pessoa",
   "families": "Famílias",
@@ -51,7 +64,6 @@ const mealTypeLabels = {
   dinner: "Jantar",
 };
 
-// Função getLabel blindada
 const getLabel = (value, map) => {
     if (!value) return null;
     let key = Array.isArray(value) ? value[0] : value;
@@ -106,7 +118,7 @@ export default function EventDetailScreen({ route, navigation }) {
   const { user } = useAuth();
 
   const [event, setEvent] = useState(null);
-  const [hostedDates, setHostedDates] = useState([]); // Datas onde o utilizador é o anfitrião
+  const [hostedDates, setHostedDates] = useState([]); 
   const [matchDetails, setMatchDetails] = useState(null); 
   const [attendingDependents, setAttendingDependents] = useState([]); 
   const [dependents, setDependents] = useState([]); 
@@ -116,19 +128,16 @@ export default function EventDetailScreen({ route, navigation }) {
   const [showInterestForm, setShowInterestForm] = useState(false);
   const [personalMessage, setPersonalMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Estado para loading dos botões de ação
   const [actionLoading, setActionLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const fetchEventData = async () => {
       try {
         setLoading(true);
-        // 1. Busca detalhes do evento atual
         const { data: eventData } = await getEventById(eventId);
         setEvent(eventData);
 
-        // 2. Busca todos os eventos onde o utilizador logado é o host para checar conflitos
         const { data: allEvents } = await getEvents();
         const userHostedDates = allEvents
           .filter(e => e.host_id === user.id)
@@ -183,20 +192,112 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
+  /**
+   * LÓGICA DE EXPORTAÇÃO DE LISTA DE PRESENÇA (PDF)
+   */
+  const handleExportAttendanceList = async () => {
+    if (!event) return;
+    setIsExporting(true);
+
+    try {
+      const { data: allAcceptedMatches } = await getAcceptedGuestsByEvent(eventId);
+
+      const filteredGuests = allAcceptedMatches.filter(m => 
+        String(m.event_id) === String(eventId) && 
+        (String(m.status).toLowerCase() === 'accepted') && 
+        m.guest_id !== event.host_id
+      );
+
+      if (!filteredGuests || filteredGuests.length === 0) {
+        setIsExporting(false);
+        return Alert.alert("Lista Vazia", "Ainda não há convidados aceitos especificamente para este evento.");
+      }
+
+      const guestRows = filteredGuests.map(match => `
+        <tr style="border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 12px; width: 60px;">
+            <img src="${match.guest?.face_photo_url || match.guest?.avatar_url || 'https://via.placeholder.com/100'}" 
+                 style="width: 50px; height: 50px; border-radius: 25px; object-fit: cover; border: 1px solid #ddd;" />
+          </td>
+          <td style="padding: 12px;">
+            <div style="font-weight: bold; font-size: 14px; color: #1f2937;">${match.guest?.full_name || 'Convidado'}</div>
+            <div style="font-size: 11px; color: #6b7280;">${match.guest?.phone || 'N/A'}</div>
+          </td>
+          <td style="padding: 12px; text-align: center;">
+            <div style="width: 20px; height: 20px; border: 1px solid #d1d5db; border-radius: 4px; display: inline-block;"></div>
+          </td>
+        </tr>
+      `).join('');
+
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Helvetica, Arial, sans-serif; padding: 20px; color: #374151; }
+              .header { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 15px; margin-bottom: 25px; }
+              .header-title { font-size: 24px; font-weight: bold; color: #4f46e5; }
+              .event-info { font-size: 14px; color: #6b7280; margin-top: 5px; }
+              .host-card { background-color: #f5f3ff; padding: 20px; border-radius: 12px; border: 1px solid #ddd6fe; margin-bottom: 30px; text-align: center; }
+              .host-label { font-size: 11px; text-transform: uppercase; color: #4f46e5; font-weight: bold; letter-spacing: 1px; }
+              .host-name { font-size: 22px; font-weight: bold; color: #1e1b4b; margin-top: 5px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+              th { text-align: left; padding: 12px; background-color: #f9fafb; font-size: 12px; color: #4b5563; text-transform: uppercase; border-bottom: 2px solid #e5e7eb; }
+              .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #9ca3af; border-top: 1px solid #eee; padding-top: 10px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="header-title">Lista de Presença (Carômetro)</div>
+              <div class="event-info"><strong>${event.title}</strong></div>
+              <div class="event-info">${formatShabbatDate(new Date(event.date))}</div>
+            </div>
+            <div class="host-card">
+              <div class="host-label">Anfitrião do Evento</div>
+              <div class="host-name">${event.host?.full_name || 'Membro da Comunidade'}</div>
+            </div>
+            <table>
+              <thead><tr><th>Foto</th><th>Nome Completo</th><th style="text-align: center;">Check-in</th></tr></thead>
+              <tbody>${guestRows}</tbody>
+            </table>
+            <div class="footer">Gerado por AquiTemShabes em ${new Date().toLocaleDateString('pt-BR')}</div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      const cleanTitle = event.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `lista_presenca_${cleanTitle}.pdf`;
+      const newPath = `${FileSystem.cacheDirectory}${fileName}`;
+
+      await FileSystem.moveAsync({ from: uri, to: newPath });
+      await Sharing.shareAsync(newPath, { UTI: '.pdf', mimeType: 'application/pdf' });
+
+    } catch (error) {
+      console.error("Erro na exportação PDF:", error);
+      toast({ type: "error", title: "Erro na exportação" });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  /**
+   * LÓGICA DE DEMONSTRAÇÃO DE INTERESSE COM NOTIFICAÇÃO PUSH
+   */
   const handleExpressInterest = async () => {
-    // 3. VALIDAÇÃO DE CONFLITO DE AGENDA
+    // Verificações de conflito de agenda
     const eventDateString = new Date(event.date).toISOString().split('T')[0];
     if (hostedDates.includes(eventDateString)) {
       return toast({ 
         type: "error", 
         title: "Conflito de Agenda", 
-        description: "Você já está organizando um evento para este dia. Não é possível participar de outro evento na mesma data." 
+        description: "Você já está organizando um evento para este dia." 
       });
     }
 
     if (!personalMessage.trim()) {
       return toast({ type: "error", title: "Por favor, escreva uma mensagem pessoal" });
     }
+
     setIsSubmitting(true);
     try {
       const matchData = {
@@ -204,30 +305,39 @@ export default function EventDetailScreen({ route, navigation }) {
         personal_message: personalMessage,
         dependent_ids: selectedDependentIds,
       };
+      
+      // 1. Cria o registro de Match no Banco de Dados
       await createMatch(matchData);
+
+      // 2. 🔔 NOTIFICAÇÃO REMOTA PERSONALIZADA PARA O ANFITRIÃO
+      // Capturamos o push_token do anfitrião que deve estar populado no objeto 'event'
+      const hostToken = event.host?.push_token;
+      const guestName = user?.full_name || "Um novo usuário";
+      const eventTitle = event?.title || "seu evento";
+
+      // LOGS DE DEPURAÇÃO PARA O TERMINAL
+      console.log(`[AquiTemShabes] Tentativa de notificar anfitrião ID: ${event.host_id}`);
+      console.log(`[AquiTemShabes] Push Token do Anfitrião: ${hostToken || 'NÃO ENCONTRADO'}`);
+
+      if (hostToken) {
+        await sendPushNotification(
+          hostToken,
+          "Novo interesse no evento! 🕯️",
+          `${guestName} se interessou pelo seu evento: ${eventTitle}`
+        );
+        console.log(`[AquiTemShabes] Notificação enviada para o Anfitrião: ${guestName} -> ${eventTitle}`);
+      } else {
+        console.warn("[AquiTemShabes] O Anfitrião ainda não possui um token de notificação cadastrado.");
+      }
+
+      // 3. Notificação Local de Sucesso para o Convidado
+      await showLocalNotification("AquiTemShabes", "Seu pedido de participação foi enviado!");
+
       toast({ type: "success", title: "Interesse enviado!", description: "O anfitrião foi notificado." });
       navigation.goBack();
     } catch (error) {
       console.error("Erro ao enviar interesse:", error);
-      if (error.response?.status === 409) {
-        toast({
-          type: "error",
-          title: "Pedido já enviado",
-          description: "Você já demonstrou interesse neste evento.",
-        });
-      } else if (error.response?.status === 403) {
-        toast({
-          type: "error",
-          title: "Ação não permitida",
-          description: "Você não pode se inscrever no seu próprio evento.",
-        });
-      } else {
-        toast({
-          type: "error",
-          title: "Erro ao enviar pedido",
-          description: "Tente novamente mais tarde.",
-        });
-      }
+      toast({ type: "error", title: "Erro ao enviar pedido" });
     } finally {
       setIsSubmitting(false);
     }
@@ -238,6 +348,23 @@ export default function EventDetailScreen({ route, navigation }) {
     setActionLoading(true);
     try {
       await updateMatchStatus(matchId, status);
+      
+      const guestName = matchDetails?.guest?.full_name || "Convidado";
+      const eventTitle = event?.title || "evento";
+
+      // 🔔 NOTIFICAÇÃO REMOTA PARA O CONVIDADO
+      if (matchDetails?.guest?.push_token) {
+        const notificationTitle = status === 'accepted' ? "Pedido Aceito! ✨" : "Pedido Recusado";
+        const notificationBody = status === 'accepted' 
+          ? `Sua participação no evento "${eventTitle}" foi confirmada!` 
+          : `Infelizmente seu pedido para "${eventTitle}" não foi aceito desta vez.`;
+        
+        await sendPushNotification(matchDetails.guest.push_token, notificationTitle, notificationBody);
+      }
+
+      const localMsg = status === 'accepted' ? `Pedido de ${guestName} aceito` : `Pedido de ${guestName} recusado`;
+      await showLocalNotification("AquiTemShabes", localMsg);
+
       setMatchDetails(prev => ({ ...prev, status: status }));
       toast({
         type: "success",
@@ -283,7 +410,7 @@ export default function EventDetailScreen({ route, navigation }) {
   const showMatchDetails = origin === "home" && matchDetails;
   const isMatchAccepted = showMatchDetails && matchDetails.status === 'accepted';
   const showWhatsAppButton = isUserHost || isMatchAccepted;
-  const addressToShow = isMatchAccepted ? event.full_address : event.approximate_address;
+  const addressToShow = isMatchAccepted || isUserHost ? event.full_address : event.approximate_address;
   const showHostActions = isUserHost && showMatchDetails && matchDetails.status === 'pending';
   const showHostIdentity = isUserHost || isMatchAccepted;
   const hostDisplayName = showHostIdentity ? (event.host?.full_name || "Desconhecido") : "Anfitrião da Comunidade";
@@ -294,7 +421,6 @@ export default function EventDetailScreen({ route, navigation }) {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
@@ -360,6 +486,22 @@ export default function EventDetailScreen({ route, navigation }) {
                   {event.target_audience && (<Badge variant="outline">Público: {getLabel(event.target_audience, targetAudienceLabels)}</Badge>)}
                   {event.languages?.map((lang) => (<Badge key={lang} variant="outline">{lang}</Badge>))}
                 </View>
+
+                {isUserHost && (
+                  <Button 
+                    variant="outline" 
+                    onPress={handleExportAttendanceList} 
+                    disabled={isExporting}
+                    style={styles.exportButton}
+                  >
+                    {isExporting ? <ActivityIndicator size="small" color="#4F46E5" /> : (
+                      <>
+                        <Icon name="file-pdf-box" size={20} color="#4F46E5" style={{ marginRight: 8 }} />
+                        <Text style={{ color: '#4F46E5', fontWeight: 'bold' }}>Exportar Lista (Carômetro)</Text>
+                      </>
+                    )}
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -381,11 +523,6 @@ export default function EventDetailScreen({ route, navigation }) {
                       </TouchableOpacity>
                       <VerifiedBadge role={matchDetails.guest?.role} size={14} style={{ marginLeft: 4 }} />
                     </View>
-                    {isUserHost && matchDetails.guest?.validator_organization && (
-                      <View style={styles.validatorBadgeSmall}>
-                        <Text style={styles.validatorTextSmall}>Validado por: <Text style={{fontWeight: 'bold'}}>{matchDetails.guest.validator_organization}</Text></Text>
-                      </View>
-                    )}
                 </CardHeader>
                 <CardContent>
                     <Text style={styles.sectionTitle}>Mensagem Pessoal</Text>
@@ -485,10 +622,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row", justifyContent: "space-between", alignItems: "center",
     paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: "#E5E7EB",
-    backgroundColor: "white", ...Platform.select({
-      ios: { paddingTop: 0, paddingBottom: 12 },
-      android: { paddingTop: 40, paddingBottom: 12 },
-    }),
+    backgroundColor: "white", ...Platform.select({ ios: { paddingTop: 0, paddingBottom: 12 }, android: { paddingTop: 40, paddingBottom: 12 } }),
   },
   headerTitle: { fontSize: 18, fontWeight: "600" },
   iconButton: { padding: 8 },
@@ -497,7 +631,7 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   eventTitle: { fontSize: 24, fontWeight: "bold" },
   hostInfoContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap' },
-  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14, marginTop: 0 },
+  hostNameLink: { color: '#4F46E5', textDecorationLine: 'underline', fontSize: 14 },
   hostNameText: { color: '#374151', fontSize: 14, fontWeight: '500', marginTop: 6 },
   description: { fontSize: 16, color: "#6B7280", marginVertical: 16 },
   detailsGrid: { gap: 12 },
@@ -523,4 +657,5 @@ const styles = StyleSheet.create({
   dietaryWarningText: { fontSize: 13, color: '#92400E', flex: 1 },
   validatorBadgeSmall: { backgroundColor: '#F3F4F6', paddingVertical: 2, paddingHorizontal: 8, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' },
   validatorTextSmall: { fontSize: 12, color: '#4B5563' },
+  exportButton: { marginTop: 20, borderStyle: 'dashed', borderColor: '#4F46E5', width: '100%', height: 50, paddingVertical: 12 },
 });

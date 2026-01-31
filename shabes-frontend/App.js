@@ -1,15 +1,22 @@
-import React, { useEffect, useState } from "react";
-import { View, StyleSheet, Alert } from "react-native";
+import React, { useEffect, useState, useRef } from "react";
+import { View, StyleSheet, Alert, Platform } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as NavigationBar from "expo-navigation-bar";
+import * as Notifications from 'expo-notifications';
 
+// Providers e Contextos
 import { Providers } from "./components/Providers";
 import { useAuth } from "./context/AuthContext";
+
+// Serviços e API
 import { getMyProfile } from "./services/api";
-import { supabase } from "./services/supabase"; // Importação do Supabase para Realtime
+import { supabase } from "./services/supabase"; 
+import { registerForPushNotificationsAsync } from "./services/notificationService";
+
+// Componentes de Layout e UI
 import Header from "./components/layout/Header";
 import TabNavigator from "./navigation/TabNavigator";
 import LoadingSpinner from "./components/ui/LoadingSpinner";
@@ -24,7 +31,7 @@ import RejectedScreen from "./components/screens/RejectedScreen";
 // Telas do App
 import MatchDetailScreen from "./components/screens/MatchDetailScreen";
 import EventDetailScreen from "./components/screens/EventDetailScreen";
-import HostEventDetailScreen from "./components/screens/HostEventDetailScreen"; // Painel do Anfitrião
+import HostEventDetailScreen from "./components/screens/HostEventDetailScreen"; 
 import NotificationsScreen from "./components/screens/NotificationsScreen";
 import AgendaScreen from "./components/screens/AgendaScreen";
 import FeedbackScreen from "./components/screens/FeedbackScreen";
@@ -33,6 +40,15 @@ import CreateEventScreen from "./components/screens/CreateEventScreen";
 import PublicProfileScreen from "./components/screens/PublicProfileScreen";
 
 const Stack = createNativeStackNavigator();
+
+// Configuração de comportamento das notificações (Foreground)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 function AuthStack() {
   return (
@@ -52,16 +68,12 @@ function AppStack() {
       }}
     >
       <Stack.Screen name="Main" component={TabNavigator} />
-      
-      {/* Telas sem Header padrão (usam layout próprio ou safe area) */}
       <Stack.Screen name="Agenda" component={AgendaScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MatchDetail" component={MatchDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="EventDetail" component={EventDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="HostEventDetail" component={HostEventDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
-      
-      {/* Telas com Header padrão */}
       <Stack.Screen name="Feedback" component={FeedbackScreen} />
       <Stack.Screen name="DiscoverEvents" component={DiscoverEventsScreen} />
       <Stack.Screen name="CreateEvent" component={CreateEventScreen} />
@@ -72,32 +84,83 @@ function AppStack() {
 function RootNavigator() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
-  const [userStatus, setUserStatus] = useState(null); // 'pending', 'approved', 'rejected'
+  const [userStatus, setUserStatus] = useState(null); 
+  
+  const notificationListener = useRef();
+  const responseListener = useRef();
 
   useEffect(() => {
     const configureNavBar = async () => {
         try {
             await NavigationBar.setVisibilityAsync("hidden");
             await NavigationBar.setBehaviorAsync("inset-swipe");
-        } catch (e) {
-            // Ignora erro em iOS ou ambientes sem suporte
-        }
+        } catch (e) {}
     };
     configureNavBar();
   }, []);
 
-  // 1. Verifica o status inicial ao abrir o app/logar
+  /**
+   * GERENCIAMENTO GLOBAL DE NOTIFICAÇÕES E PERSISTÊNCIA DE TOKEN
+   */
+  useEffect(() => {
+    // Agora gravamos o token assim que isAuthenticated e user existem, 
+    // independente de o status estar aprovado ou não, para garantir a captura imediata.
+    if (isAuthenticated && user?.id) {
+      
+      // 1. Registro do Push Token e Salvamento no Perfil do Usuário
+      registerForPushNotificationsAsync().then(async (token) => {
+        if (token) {
+          console.log("[AquiTemShabes] Push Token obtido:", token);
+          
+          try {
+            // Atualiza a coluna push_token na tabela profiles do Supabase
+            const { error } = await supabase
+              .from('profiles')
+              .update({ push_token: token })
+              .eq('id', user.id);
+            
+            if (error) {
+                console.error("[AquiTemShabes] Erro ao gravar push_token no Supabase:", error);
+            } else {
+                console.log("[AquiTemShabes] Push Token sincronizado com sucesso.");
+            }
+          } catch (err) {
+            console.error("[AquiTemShabes] Exceção ao salvar token:", err);
+          }
+        }
+      });
+
+      // 2. Ouvintes de Notificação (Ativos apenas se estiver logado)
+      notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+        console.log("[AquiTemShabes] Notificação em foreground:", notification.request.content.title);
+      });
+
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+        const { data } = response.notification.request.content;
+        console.log("[AquiTemShabes] Clique detectado:", data);
+      });
+
+      return () => {
+        if (notificationListener.current) {
+          notificationListener.current.remove();
+        }
+        if (responseListener.current) {
+          responseListener.current.remove();
+        }
+      };
+    }
+  }, [isAuthenticated, user?.id]);
+
+  // Verificação de Status do Usuário
   useEffect(() => {
     const checkStatus = async () => {
       if (isAuthenticated && user) {
         setIsCheckingStatus(true);
         try {
           const { data } = await getMyProfile();
-          // Se status não existir, assume 'approved' para compatibilidade
           setUserStatus(data?.status || 'approved'); 
         } catch (error) {
-          console.error("Erro ao verificar status do usuário:", error);
-          // Em erro de rede, mantemos o usuário preso por segurança ou tentamos novamente
+          console.error("Erro ao verificar status:", error);
           setUserStatus('error'); 
         } finally {
           setIsCheckingStatus(false);
@@ -106,12 +169,10 @@ function RootNavigator() {
         setUserStatus(null);
       }
     };
-
     checkStatus();
   }, [isAuthenticated, user]);
 
-  // 2. Monitoramento em Tempo Real (Realtime)
-  // Escuta mudanças na tabela 'profiles' para deslogar instantaneamente se for rejeitado
+  // Realtime Monitor para Status do Perfil
   useEffect(() => {
     if (!user) return;
 
@@ -127,15 +188,12 @@ function RootNavigator() {
         },
         (payload) => {
           const newStatus = payload.new.status;
-          console.log("⚡ Status atualizado em tempo real:", newStatus);
-          
           setUserStatus(newStatus);
-
           if (newStatus === 'rejected') {
              Alert.alert(
                  "Acesso Revogado", 
                  "Sua conta não foi aprovada pelos administradores.",
-                 [{ text: "OK", onPress: () => signOut() }] // Força logout ao clicar OK
+                 [{ text: "OK", onPress: () => signOut() }]
              );
           }
         }
@@ -165,7 +223,6 @@ function RootNavigator() {
   } else if (userStatus === 'rejected') {
     return <RejectedScreen />;
   } else {
-    // 'pending', 'error' ou qualquer outro estado desconhecido
     return <PendingApprovalScreen />;
   }
 }
