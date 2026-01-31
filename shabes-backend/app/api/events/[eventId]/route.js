@@ -29,8 +29,9 @@ export async function GET(request, { params }) {
         console.log(`[GET_EVENT] Iniciando busca para o evento: ${eventId}`);
 
         /**
-         * Tentativa de consulta expandida.
-         * Se esta consulta falhar, o erro aparecerá detalhado no console do Render.
+         * ATUALIZAÇÃO CRÍTICA:
+         * Alterado de 'matches:event_matches' para apenas 'matches'.
+         * De acordo com os logs do Render, o Supabase identifica a relação como 'matches'.
          */
         const { data, error } = await supabase
             .from('events')
@@ -44,11 +45,11 @@ export async function GET(request, { params }) {
                     phone,
                     push_token
                 ),
-                matches:event_matches (
+                matches (
                     id,
                     status,
                     personal_message,
-                    guest:profiles!event_matches_guest_id_fkey (
+                    guest:profiles (
                         id,
                         full_name,
                         push_token
