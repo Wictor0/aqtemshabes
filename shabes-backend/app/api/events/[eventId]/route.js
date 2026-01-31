@@ -13,7 +13,7 @@ const createPublicSupabaseClient = () => {
 
 /**
  * GET /api/events/[id]
- * Busca um evento específico pelo ID e inclui os dados do anfitrião necessários para notificações.
+ * Busca um evento específico pelo ID e inclui os dados do anfitrião e dos convidados interessados.
  */
 export async function GET(request, { params }) {
     try {
@@ -21,7 +21,6 @@ export async function GET(request, { params }) {
         console.log("[GET_EVENT] Parâmetros recebidos na rota:", params);
 
         // Next.js mapeia o nome da pasta [id] para params.id. 
-        // Adicionamos um fallback para 'eventId' e verificamos se não é a string "undefined"
         const eventId = params?.id || params?.eventId; 
         
         if (!eventId || eventId === 'undefined' || eventId === 'null') {
@@ -34,8 +33,8 @@ export async function GET(request, { params }) {
 
         const supabase = createPublicSupabaseClient();
 
-        // Buscamos o evento e fazemos o JOIN com a tabela profiles.
-        // O campo 'push_token' é essencial para o frontend conseguir notificar o anfitrião.
+        // ATUALIZAÇÃO: Agora incluímos os matches e os push_tokens dos convidados (guest)
+        // Isso permite que o anfitrião saiba para quem enviar a notificação de "Aceito"
         const { data, error } = await supabase
             .from('events')
             .select(`
@@ -48,6 +47,17 @@ export async function GET(request, { params }) {
                     birth_date,
                     phone,
                     push_token
+                ),
+                matches:event_matches (
+                    id,
+                    status,
+                    personal_message,
+                    guest:profiles!event_matches_guest_id_fkey (
+                        id,
+                        full_name,
+                        avatar_url,
+                        push_token
+                    )
                 )
             `)
             .eq('id', eventId)
