@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Desabilita o cache para esta rota
+// Desabilita o cache para garantir dados sempre atualizados (essencial para tokens)
 export const dynamic = 'force-dynamic';
 
 const createPublicSupabaseClient = () => {
@@ -11,22 +11,23 @@ const createPublicSupabaseClient = () => {
     );
 };
 
-// ======================
-// GET /api/events/[eventId]
-// Busca um evento específico pelo ID
-// ======================
+/**
+ * GET /api/events/[id]
+ * Busca um evento específico pelo ID e inclui os dados do anfitrião necessários para notificações.
+ */
 export async function GET(request, { params }) {
     try {
-        const { eventId } = params;
+        // Next.js mapeia o nome da pasta [id] para params.id
+        const eventId = params.id; 
+        
         if (!eventId) {
             return NextResponse.json({ error: 'ID do evento é obrigatório' }, { status: 400 });
         }
 
         const supabase = createPublicSupabaseClient();
 
-        // 👇 --- CORREÇÃO APLICADA AQUI --- 👇
-        // Trocamos 'host:profiles' por 'host:profiles!events_host_id_fkey'
-        // para dizer ao Supabase qual "join" usar.
+        // Buscamos o evento e fazemos o JOIN com a tabela profiles.
+        // Adicionamos 'push_token' na seleção para que o frontend consiga notificar o anfitrião.
         const { data, error } = await supabase
             .from('events')
             .select(`
@@ -37,20 +38,21 @@ export async function GET(request, { params }) {
                     username,
                     avatar_url,
                     birth_date,
-                    phone
+                    phone,
+                    push_token
                 )
             `)
             .eq('id', eventId)
             .single();
-        // 👆 --- FIM DA CORREÇÃO --- 👆
 
         if (error) {
-            if (error.code === 'PGRST116') { // Código para 'Not Found'
+            if (error.code === 'PGRST116') { 
                 return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
             }
             throw error;
         }
 
+        // Retornamos os dados com headers para evitar cache agressivo no telemóvel
         return NextResponse.json(data, {
             status: 200,
             headers: {
