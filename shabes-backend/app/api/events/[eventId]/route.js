@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Desabilita o cache para garantir dados sempre atualizados (essencial para tokens)
+// Desabilita o cache para garantir dados sempre atualizados
 export const dynamic = 'force-dynamic';
 
 const createPublicSupabaseClient = () => {
@@ -13,28 +13,25 @@ const createPublicSupabaseClient = () => {
 
 /**
  * GET /api/events/[id]
- * Busca um evento específico pelo ID e inclui os dados do anfitrião e dos convidados interessados.
+ * Busca detalhes do evento, incluindo tokens para notificações.
  */
 export async function GET(request, { params }) {
     try {
-        // LOG DE DEPURAÇÃO: Verifique os logs no Render para ver o conteúdo de 'params'
-        console.log("[GET_EVENT] Parâmetros recebidos na rota:", params);
-
-        // Next.js mapeia o nome da pasta [id] para params.id. 
+        // Captura do ID de forma robusta
         const eventId = params?.id || params?.eventId; 
         
         if (!eventId || eventId === 'undefined' || eventId === 'null') {
-            console.error("[GET_EVENT] Erro 400: ID do evento ausente ou inválido no URL.");
-            return NextResponse.json({ 
-                error: 'ID do evento é obrigatório e deve ser válido.',
-                receivedParams: params 
-            }, { status: 400 });
+            return NextResponse.json({ error: 'ID do evento inválido.' }, { status: 400 });
         }
 
         const supabase = createPublicSupabaseClient();
 
-        // ATUALIZAÇÃO: Agora incluímos os matches e os push_tokens dos convidados (guest)
-        // Isso permite que o anfitrião saiba para quem enviar a notificação de "Aceito"
+        console.log(`[GET_EVENT] Iniciando busca para o evento: ${eventId}`);
+
+        /**
+         * Tentativa de consulta expandida.
+         * Se esta consulta falhar, o erro aparecerá detalhado no console do Render.
+         */
         const { data, error } = await supabase
             .from('events')
             .select(`
@@ -44,7 +41,6 @@ export async function GET(request, { params }) {
                     full_name,
                     username,
                     avatar_url,
-                    birth_date,
                     phone,
                     push_token
                 ),
@@ -55,7 +51,6 @@ export async function GET(request, { params }) {
                     guest:profiles!event_matches_guest_id_fkey (
                         id,
                         full_name,
-                        avatar_url,
                         push_token
                     )
                 )
@@ -64,14 +59,25 @@ export async function GET(request, { params }) {
             .single();
 
         if (error) {
-            console.error("[GET_EVENT] Erro na consulta Supabase:", error.message);
+            // Log detalhado para diagnóstico no Render
+            console.error("[GET_EVENT] Erro na consulta Supabase:", {
+                code: error.code,
+                message: error.message,
+                details: error.details,
+                hint: error.hint
+            });
+
             if (error.code === 'PGRST116') { 
                 return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
             }
-            throw error;
+            
+            // Retorna o erro específico do banco para ajudar no debug do frontend
+            return NextResponse.json({ 
+                error: 'Erro na consulta ao banco de dados', 
+                details: error.message 
+            }, { status: 500 });
         }
 
-        // Retornamos os dados com headers para evitar cache agressivo no telemóvel
         return NextResponse.json(data, {
             status: 200,
             headers: {
@@ -82,7 +88,10 @@ export async function GET(request, { params }) {
         });
 
     } catch (e) {
-        console.error('Erro crítico ao processar pedido de evento:', e);
-        return NextResponse.json({ error: 'Ocorreu um erro interno no servidor.' }, { status: 500 });
+        console.error('[GET_EVENT] Erro crítico inesperado:', e);
+        return NextResponse.json({ 
+            error: 'Erro interno no servidor.',
+            message: e.message 
+        }, { status: 500 });
     }
 }
