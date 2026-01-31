@@ -17,17 +17,25 @@ const createPublicSupabaseClient = () => {
  */
 export async function GET(request, { params }) {
     try {
-        // Next.js mapeia o nome da pasta [id] para params.id
-        const eventId = params.id; 
+        // LOG DE DEPURAÇÃO: Verifique os logs no Render para ver o conteúdo de 'params'
+        console.log("[GET_EVENT] Parâmetros recebidos na rota:", params);
+
+        // Next.js mapeia o nome da pasta [id] para params.id. 
+        // Adicionamos um fallback para 'eventId' e verificamos se não é a string "undefined"
+        const eventId = params?.id || params?.eventId; 
         
-        if (!eventId) {
-            return NextResponse.json({ error: 'ID do evento é obrigatório' }, { status: 400 });
+        if (!eventId || eventId === 'undefined' || eventId === 'null') {
+            console.error("[GET_EVENT] Erro 400: ID do evento ausente ou inválido no URL.");
+            return NextResponse.json({ 
+                error: 'ID do evento é obrigatório e deve ser válido.',
+                receivedParams: params 
+            }, { status: 400 });
         }
 
         const supabase = createPublicSupabaseClient();
 
         // Buscamos o evento e fazemos o JOIN com a tabela profiles.
-        // Adicionamos 'push_token' na seleção para que o frontend consiga notificar o anfitrião.
+        // O campo 'push_token' é essencial para o frontend conseguir notificar o anfitrião.
         const { data, error } = await supabase
             .from('events')
             .select(`
@@ -46,6 +54,7 @@ export async function GET(request, { params }) {
             .single();
 
         if (error) {
+            console.error("[GET_EVENT] Erro na consulta Supabase:", error.message);
             if (error.code === 'PGRST116') { 
                 return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
             }
@@ -63,7 +72,7 @@ export async function GET(request, { params }) {
         });
 
     } catch (e) {
-        console.error('Erro ao buscar evento por ID:', e);
+        console.error('Erro crítico ao processar pedido de evento:', e);
         return NextResponse.json({ error: 'Ocorreu um erro interno no servidor.' }, { status: 500 });
     }
 }
