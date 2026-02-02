@@ -91,17 +91,17 @@ export default function MatchCard({
 
     if (showHostIdentity) {
         avatarUrl = match?.event?.host?.avatar_url;
-        fallbackName = match?.event?.host?.full_name || match?.event?.host?.username || "Anfitrião";
-        displayName = match?.event?.host?.username || match?.event?.host?.full_name || "Anfitrião";
-        displayRole = match?.event?.host?.role;
-        descriptionText = `Evento de ${displayName}`;
+        fallbackName = match?.event?.host?.username || "Anfitrião";
+        displayName = eventTitle;
+        displayRole = null;
+        descriptionText = `Aceito por ${fallbackName} ${displayRole ? `(${displayRole})` : ''}`;
     } else {
         // Se ainda não foi aceito, esconde tudo
         avatarUrl = null; // Sem foto
         fallbackName = "Anfitrião"; 
-        displayName = "Evento"; // Título do Card vira o nome do evento
-        displayRole = null; // Sem selo
-        descriptionText = `Anfitrião da Comunidade`;
+        displayName = "Evento" ; // Título do Card vira o nome do evento
+        displayRole = null;
+        descriptionText = `Anfitrião da Comunidade ${displayRole ? `(${displayRole})` : ''}`;
     }
   }
 

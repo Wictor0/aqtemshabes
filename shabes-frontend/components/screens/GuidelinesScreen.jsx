@@ -31,7 +31,7 @@ export default function GuidelinesScreen({ navigation, route }) {
           </View>
           <Text style={styles.title}>Bem-vindo à Comunidade</Text>
           <Text style={styles.subtitle}>
-            Antes de criar sua conta, queremos te contar como o Shabes funciona.
+            Antes de criar sua conta, queremos te contar como o AquiTemShabes funciona.
           </Text>
         </View>
 
@@ -39,7 +39,7 @@ export default function GuidelinesScreen({ navigation, route }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🤝 Nosso Propósito</Text>
           <Text style={styles.text}>
-            O Shabes existe para conectar anfitriões que abrem suas casas para o Shabat com convidados que buscam um lugar para celebrar. Queremos fortalecer laços e garantir que ninguém passe o Shabat sozinho.
+            O AquiTemShabes existe para conectar anfitriões que abrem suas casas para o Shabat com convidados que buscam um lugar para celebrar. Queremos fortalecer laços e garantir que ninguém passe o Shabat sozinho.
           </Text>
         </View>
 

@@ -9,7 +9,6 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Cliente Supabase com privilégios de Admin (Service Role)
- * Inicializado de forma a evitar falhas se as variáveis não estiverem prontas no build
  */
 const getSupabaseAdmin = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -75,6 +74,10 @@ export async function POST(request) {
     const avatarBase64 = body.avatar_url || meta.avatar_url || body.image || null;
     const facePhotoBase64 = body.face_photo_url || meta.face_photo_url || body.facePhoto || null;
 
+    // Captura das novas organizações de validação
+    const validator1 = body.validator_organization_1 || meta.validator_organization_1 || "Nenhuma";
+    const validator2 = body.validator_organization_2 || meta.validator_organization_2 || "Nenhuma";
+
     if (!email || !password) {
       return NextResponse.json({ error: "Email e senha são obrigatórios." }, { status: 400 });
     }
@@ -88,7 +91,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Configuração do servidor incompleta (Service Role)." }, { status: 500 });
     }
 
-    // 1. SignUp no Auth (Trigger SQL criará o perfil como 'pending')
+    // 1. SignUp no Auth (Trigger SQL usará esses metadados para popular as novas colunas)
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -99,7 +102,9 @@ export async function POST(request) {
           phone: body.phone || meta.phone || '',
           birth_date: body.birth_date || meta.birth_date || null,
           dietary_restrictions: body.dietaryRestrictions || meta.dietaryRestrictions || "",
-          validator_organization: body.validatorOrganization || meta.validatorOrganization || "Qualquer",
+          // Passamos ambos para os metadados do Auth para o Trigger SQL processar
+          validator_organization_1: validator1,
+          validator_organization_2: validator2,
           invite_code: body.inviteCode || meta.invite_code || "",
           avatar_url: avatarBase64 ? 'processing' : null,
           face_photo_url: facePhotoBase64 ? 'processing' : null
@@ -116,7 +121,7 @@ export async function POST(request) {
     let finalAvatarUrl = null;
     let finalFaceUrl = null;
 
-    // 2. Processamento das imagens via Admin (Ignora RLS)
+    // 2. Processamento das imagens via Admin
     if (userId) {
         if (avatarBase64) {
           finalAvatarUrl = await uploadBase64Image(supabaseAdmin, avatarBase64, `${userId}/profile/avatar.png`);
@@ -125,29 +130,27 @@ export async function POST(request) {
           finalFaceUrl = await uploadBase64Image(supabaseAdmin, facePhotoBase64, `${userId}/verification/face.png`);
         }
 
-        // 3. Atualização forçada dos links na tabela Profiles
         const updateFields = {};
         if (finalAvatarUrl) updateFields.avatar_url = finalAvatarUrl;
         if (finalFaceUrl) updateFields.face_photo_url = finalFaceUrl;
 
         if (Object.keys(updateFields).length > 0) {
-            const { error: profileError } = await supabaseAdmin
+            await supabaseAdmin
                 .from('profiles')
                 .update(updateFields)
                 .eq('id', userId);
-            
-            if (profileError) {
-              console.error("[AUTH-SIGNUP] Erro ao atualizar perfil via Admin:", profileError.message);
-            }
         }
     }
 
-    // 4. Notificação por E-mail Administrativo
+    // 4. Notificação por E-mail Administrativo com Seção Dedicada
     if (data.user) {
         const emailText = `🚀 Novo registo para aprovação.\n\n` +
                           `▪ Nome: ${body.name || meta.full_name || 'Novo Utilizador'}\n` +
                           `▪ Email: ${email}\n` +
                           `▪ Telefone: ${body.phone || meta.phone || 'N/A'}\n\n` +
+                          `🔍 ORGANIZAÇÕES DE VALIDAÇÃO ESCOLHIDAS:\n` +
+                          `1. ${validator1}\n` +
+                          `2. ${validator2}\n\n` +
                           `📸 FOTO ROSTO: ${finalFaceUrl || '⚠️ Erro no processamento'}\n` +
                           `👤 FOTO PERFIL: ${finalAvatarUrl || '⚠️ Erro no processamento'}\n\n` +
                           `Gestão: https://supabase.com/dashboard/project/cafuulfswdjcpenmdutn/editor/table/profiles?filter=id%3Deq.${userId}`;

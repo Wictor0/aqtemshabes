@@ -98,17 +98,10 @@ export default function SignUpScreen({ navigation, route }) {
   const [facePhoto, setFacePhoto] = useState(null); // Foto de rosto
 
   const [dietaryRestrictions, setDietaryRestrictions] = useState("");
-  const [validatorOrganization, setValidatorOrganization] = useState("Qualquer");
-  const [validatorOpen, setValidatorOpen] = useState(false);
-  const animatedHeight = useRef(new Animated.Value(0)).current;
-  const iconRotation = useRef(new Animated.Value(0)).current;
-
-  const toggleValidator = () => {
-    const toValue = validatorOpen ? 0 : 1;
-    setValidatorOpen(!validatorOpen);
-    Animated.timing(animatedHeight, { toValue, duration: 300, useNativeDriver: false }).start();
-    Animated.timing(iconRotation, { toValue, duration: 300, useNativeDriver: true }).start();
-  };
+  
+  // --- NOVOS ESTADOS PARA VALIDAÇÃO DUPLA ---
+  const [validator1, setValidator1] = useState("Makom");
+  const [validator2, setValidator2] = useState("AquiTemShabes");
 
   const handlePhoneChange = (text) => {
     const rawValue = text.replace(/\D/g, '');
@@ -133,7 +126,7 @@ export default function SignUpScreen({ navigation, route }) {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.4,
-      base64: true, // Importante para o backend processar
+      base64: true,
     });
     if (!result.canceled) setAvatar(result.assets[0]);
   };
@@ -149,7 +142,7 @@ export default function SignUpScreen({ navigation, route }) {
       allowsEditing: true,
       aspect: [3, 4],
       quality: 0.4,
-      base64: true, // Importante para o backend processar
+      base64: true,
     });
     if (!result.canceled) setFacePhoto(result.assets[0]);
   };
@@ -169,22 +162,22 @@ export default function SignUpScreen({ navigation, route }) {
       const cleanPhone = phoneNumber.replace(/\D/g, '');
       const fullPhone = `${selectedCountry.code}${cleanPhone}`;
 
-      // Montamos as strings Base64 completas
       const avatarBase64 = avatar ? `data:image/png;base64,${avatar.base64}` : null;
       const facePhotoBase64 = `data:image/png;base64,${facePhoto.base64}`;
 
-      // Enviamos tudo para o Backend em um único pedido
-      const response = await signUp({
+      await signUp({
         email,
         password,
         name: fullName,
         phone: fullPhone,
         birth_date: birthDate.toISOString().split('T')[0],
         inviteCode,
-        validatorOrganization,
+        // ENVIANDO AS DUAS ORGANIZAÇÕES ESCOLHIDAS
+        validator_organization_1: validator1,
+        validator_organization_2: validator2,
         dietaryRestrictions,
-        avatar_url: avatarBase64,      // Backend irá extrair e subir para o storage
-        face_photo_url: facePhotoBase64 // Backend irá extrair e subir para o storage
+        avatar_url: avatarBase64,
+        face_photo_url: facePhotoBase64
       });
 
       Alert.alert(
@@ -193,7 +186,6 @@ export default function SignUpScreen({ navigation, route }) {
         [{ text: 'OK', onPress: () => navigation.navigate('Welcome') }]
       );
     } catch (error) {
-      console.error("Erro no cadastro:", error.response?.data || error.message);
       Alert.alert('Erro', error.response?.data?.error || 'Ocorreu um erro ao criar a conta.');
     } finally {
       setIsLoading(false);
@@ -206,6 +198,26 @@ export default function SignUpScreen({ navigation, route }) {
       <Text style={styles.countryName}>{item.name}</Text>
       <Text style={styles.countryCode}>{item.code}</Text>
     </TouchableOpacity>
+  );
+
+  // --- SUB-COMPONENTE PARA OS CHIPS DE SELEÇÃO ---
+  const ValidatorSelector = ({ selectedValue, onSelect, label }) => (
+    <View style={styles.validatorChipSection}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+        {validatorOptions.map((option) => (
+          <TouchableOpacity 
+            key={option} 
+            onPress={() => onSelect(option)}
+            style={[styles.chip, selectedValue === option && styles.chipSelected]}
+          >
+            <Text style={[styles.chipText, selectedValue === option && styles.chipTextSelected]}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
   );
 
   return (
@@ -263,26 +275,18 @@ export default function SignUpScreen({ navigation, route }) {
                 <TextInput style={[styles.input, { height: 70, textAlignVertical: 'top' }]} placeholder="Vegano, Alérgico a glúten..." value={dietaryRestrictions} onChangeText={setDietaryRestrictions} multiline />
             </View>
 
-            <View style={styles.validatorContainer}>
-                <TouchableOpacity onPress={toggleValidator} style={styles.validatorHeader}>
-                    <View>
-                        <Text style={styles.validatorLabel}>Validar por:</Text>
-                        <Text style={styles.validatorValue}>{validatorOrganization}</Text>
-                    </View>
-                    <Animated.View style={{ transform: [{ rotate: iconRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }) }] }}>
-                        <Icon name="chevron-down" size={24} color="#6B7280" />
-                    </Animated.View>
-                </TouchableOpacity>
-                <Animated.View style={{ height: animatedHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 220] }), overflow: 'hidden' }}>
-                    <View style={styles.validatorList}>
-                        {validatorOptions.map((org) => (
-                            <TouchableOpacity key={org} style={[styles.validatorOption, validatorOrganization === org && styles.validatorOptionSelected]} onPress={() => { setValidatorOrganization(org); toggleValidator(); }}>
-                                <Text style={[styles.validatorOptionText, validatorOrganization === org && styles.validatorOptionTextSelected]}>{org}</Text>
-                                {validatorOrganization === org && <Icon name="check" size={18} color="#4F46E5" />}
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </Animated.View>
+            {/* SELEÇÃO DUPLA DE ORGANIZAÇÕES (REPLICA O ANTIGO DROPDOWN) */}
+            <View style={styles.validatorsWrapper}>
+              <ValidatorSelector 
+                label="Organização de Validação 1" 
+                selectedValue={validator1} 
+                onSelect={setValidator1} 
+              />
+              <ValidatorSelector 
+                label="Organização de Validação 2" 
+                selectedValue={validator2} 
+                onSelect={setValidator2} 
+              />
             </View>
 
             <TouchableOpacity style={styles.button} onPress={handleSignUp} disabled={isLoading}>
@@ -293,10 +297,10 @@ export default function SignUpScreen({ navigation, route }) {
       </KeyboardAvoidingView>
 
       <SlidingModal visible={showCountryModal} onClose={() => setShowCountryModal(false)}>
-         <View style={styles.modalContent}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}><Text style={styles.modalTitle}>País</Text><TouchableOpacity onPress={() => setShowCountryModal(false)}><Icon name="x" size={24} color="#374151" /></TouchableOpacity></View>
             <FlatList data={countries} keyExtractor={(it) => it.code} renderItem={renderCountryItem} />
-         </View>
+          </View>
       </SlidingModal>
 
       {showDatePicker && (
@@ -329,15 +333,37 @@ const styles = StyleSheet.create({
   phoneInput: { flex: 1, backgroundColor: 'white', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
   datePickerButton: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   datePickerText: { fontSize: 16, color: '#374151' },
-  validatorContainer: { backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', overflow: 'hidden' },
-  validatorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14 },
-  validatorLabel: { fontSize: 11, color: '#6B7280' },
-  validatorValue: { fontSize: 15, color: '#1F2937', fontWeight: '500' },
-  validatorList: { padding: 8, backgroundColor: '#F9FAFB', borderTopWidth: 1, borderTopColor: '#E5E7EB' },
-  validatorOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 8 },
-  validatorOptionSelected: { backgroundColor: '#EEF2FF' },
-  validatorOptionText: { fontSize: 14, color: '#374151' },
-  validatorOptionTextSelected: { color: '#4F46E5', fontWeight: '600' },
+  
+  // Estilos para os Seletores de Organização (Chips)
+  validatorsWrapper: { gap: 16, marginVertical: 8 },
+  validatorChipSection: { gap: 8 },
+  chipScroll: { flexDirection: 'row' },
+  chip: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 20, 
+    borderWidth: 1, 
+    borderColor: '#E5E7EB', 
+    backgroundColor: 'white', 
+    marginRight: 10,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowOffset: { width: 0, height: 1 }
+  },
+  chipSelected: { 
+    backgroundColor: '#4F46E5', 
+    borderColor: '#4F46E5' 
+  },
+  chipText: { 
+    fontSize: 14, 
+    color: '#6B7280' 
+  },
+  chipTextSelected: { 
+    color: 'white', 
+    fontWeight: 'bold' 
+  },
+
   button: { backgroundColor: '#4F46E5', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
   modalOverlayContainer: { flex: 1, justifyContent: 'flex-end' },
