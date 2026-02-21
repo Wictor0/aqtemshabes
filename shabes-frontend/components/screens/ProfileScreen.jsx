@@ -578,7 +578,7 @@ export default function ProfileScreen({ navigation }) {
                     {isEditingAccount ? (
                         <TextInput style={styles.infoInput} value={newUsername} onChangeText={setNewUsername} placeholder="Nome de utilizador" />
                     ) : (
-                        <Text style={styles.infoText}>@{profile.username || 'Não definido'}</Text>
+                        <Text style={styles.infoText}>{profile.username || 'Não definido'}</Text>
                     )}
                 </View>
                 <View style={styles.infoRow}>

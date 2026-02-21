@@ -92,9 +92,9 @@ export default function AgendaScreen({ navigation }) {
       const guestMatches = guestResp.data || [];
       const hostMatches = hostResp.data || [];
 
-      // Processa eventos onde sou CONVIDADO
+      // 👇 Processa eventos onde sou CONVIDADO (Filtro Robusto)
       const guestCommitments = guestMatches
-        .filter(match => match.status === "accepted" && match.event)
+        .filter(match => match.event && match.status?.toLowerCase() === "accepted")
         .map(match => ({
           id: match.event.id,
           matchId: match.id, 
@@ -110,7 +110,7 @@ export default function AgendaScreen({ navigation }) {
           location: match.event.approximate_address || 'Local a definir'
         }));
 
-      // Processa eventos onde sou ANFITRIÃO
+      // 👇 Processa eventos onde sou ANFITRIÃO
       const hostEventsMap = new Map();
       
       hostMatches.forEach(match => {
@@ -119,6 +119,7 @@ export default function AgendaScreen({ navigation }) {
         if (!hostEventsMap.has(match.event.id)) {
           hostEventsMap.set(match.event.id, {
             id: match.event.id,
+            matchId: null,
             title: match.event.title,
             hebrewTitle: match.event.hebrew_title || "",
             transliteration: match.event.transliteration || "",
@@ -127,12 +128,13 @@ export default function AgendaScreen({ navigation }) {
             isJewishEvent: false,
             isShabbatEvent: true,
             role: 'host',
-            peopleCount: 0,
+            peopleCount: 0, // Começa em 0 para somar apenas confirmados
             location: match.event.full_address || match.event.approximate_address || 'Local a definir'
           });
         }
         
-        if (match.status === 'accepted') {
+        // 🚨 CORREÇÃO: Apenas soma se o status for exatamente 'accepted' (case-insensitive)
+        if (match.status?.toLowerCase() === 'accepted') {
            const current = hostEventsMap.get(match.event.id);
            current.peopleCount += 1 + (match.dependent_ids ? match.dependent_ids.length : 0);
         }
@@ -160,14 +162,12 @@ export default function AgendaScreen({ navigation }) {
         ...jewishCommitments
       ];
 
-      // Remove duplicatas se houver
       const uniqueCommitments = Array.from(
         new Map(allCommitments.map(item => [item.id, item])).values()
       );
 
       setConfirmedEvents(uniqueCommitments);
 
-      // --- LÓGICA PARA PRÓXIMOS COMPROMISSOS ---
       const todayDateObj = new Date();
       todayDateObj.setHours(0, 0, 0, 0);
 
@@ -198,10 +198,7 @@ export default function AgendaScreen({ navigation }) {
     }, {});
   }, [confirmedEvents]);
 
-  const eventsForSelectedDay = groupedEvents[selectedDate] || [];
-  
-  // 👇 MODIFICADO: Agora mostramos TODOS os eventos do dia, não apenas os judaicos
-  const displayEventsForSelectedDay = eventsForSelectedDay;
+  const displayEventsForSelectedDay = groupedEvents[selectedDate] || [];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -227,7 +224,7 @@ export default function AgendaScreen({ navigation }) {
             const events = groupedEvents[date.dateString] || [];
             
             const hasJewish = events.some(ev => ev.isJewishEvent);
-            const hasShabbat = events.some(ev => ev.isShabbatEvent); // Cobre Host e Guest
+            const hasShabbat = events.some(ev => ev.isShabbatEvent); 
             
             const isSelected = selectedDate === date.dateString;
             const isToday = date.dateString === today;
@@ -271,19 +268,16 @@ export default function AgendaScreen({ navigation }) {
         />
 
         <View style={styles.listContainer}>
-          {/* --- SEÇÃO 1: COMPROMISSOS DO DIA (TODOS) --- */}
           <Text style={styles.listHeader}>Compromissos Do Dia</Text>
           
           {loading ? (
             <ActivityIndicator size="large" style={{marginTop:20}}/>
           ) : displayEventsForSelectedDay.length > 0 ? (
             displayEventsForSelectedDay.map((item) => {
-                // Lógica de cores e conteúdo para o card do dia
                 const isHoliday = item.isJewishEvent;
                 const boxColor = isHoliday ? ROLE_COLORS.holiday : (item.role === 'host' ? ROLE_COLORS.host : ROLE_COLORS.guest);
                 const titleColor = isHoliday ? '#D97706' : '#1F2937';
                 
-                // Texto principal e secundário variam se for feriado ou evento
                 const mainTitle = isHoliday ? item.hebrewTitle : item.title;
                 const subTitle = isHoliday ? item.title : (new Date(item.fullDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + item.location);
                 const iconName = isHoliday ? "star" : (item.role === 'host' ? "home-account" : "calendar-check");
@@ -293,18 +287,14 @@ export default function AgendaScreen({ navigation }) {
                   <TouchableOpacity 
                     key={item.id} 
                     activeOpacity={isHoliday ? 1 : 0.8}
-                    disabled={isHoliday} // Feriados não clicáveis, Eventos clicáveis
+                    disabled={isHoliday} 
                     onPress={() => {
                         if (!isHoliday) {
-                            if (item.role === 'host') {
-                                navigation.navigate("HostEventDetail", { eventId: item.id });
-                            } else {
-                                navigation.navigate("EventDetail", { 
-                                    eventId: item.id, 
-                                    matchId: item.matchId, 
-                                    origin: 'home' 
-                                });
-                            }
+                            navigation.navigate("EventDetail", { 
+                                eventId: item.id, 
+                                matchId: item.matchId, 
+                                origin: 'agenda' 
+                            });
                         }
                     }}
                   >
@@ -338,7 +328,6 @@ export default function AgendaScreen({ navigation }) {
             </View>
           )}
 
-          {/* --- SEÇÃO 2: PRÓXIMOS COMPROMISSOS --- */}
           <View style={styles.upcomingSection}>
             <Text style={styles.listHeader}>Próximos Compromissos</Text>
             
@@ -361,19 +350,14 @@ export default function AgendaScreen({ navigation }) {
                         key={`upcoming-${item.id}`} 
                         activeOpacity={0.8}
                         onPress={() => {
-                            if (item.role === 'host') {
-                                navigation.navigate("HostEventDetail", { eventId: item.id });
-                            } else {
-                                navigation.navigate("EventDetail", { 
-                                  eventId: item.id, 
-                                  matchId: item.matchId, 
-                                  origin: 'home' 
-                                });
-                            }
+                            navigation.navigate("EventDetail", { 
+                              eventId: item.id, 
+                              matchId: item.matchId, 
+                              origin: 'agenda' 
+                            });
                         }}
                     >
                         <View style={styles.upcomingCardNew}>
-                            {/* Coluna da Esquerda */}
                             <View style={[styles.leftColumn, { backgroundColor: dateBoxColor }]}> 
                                 <Text style={styles.monthText}>{month}</Text>
                                 <Text style={styles.dayText}>{day}</Text>
@@ -382,7 +366,6 @@ export default function AgendaScreen({ navigation }) {
                                 <Text style={styles.timeText}>{time}</Text>
                             </View>
 
-                            {/* Coluna da Direita */}
                             <View style={styles.rightColumn}>
                                 <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
                                     <Text style={styles.upcomingTitleNew} numberOfLines={1}>{item.title}</Text>
@@ -401,6 +384,7 @@ export default function AgendaScreen({ navigation }) {
                                     <View style={styles.eventMetaRowNew}>
                                         <View style={styles.metaItemNew}>
                                             <Icon name="account-group-outline" size={14} color="#6B7280" />
+                                            {/* 👇 Mostra apenas pessoas aceitas graças ao filtro robusto na lógica de busca 👇 */}
                                             <Text style={styles.metaTextNew}>{item.peopleCount} pessoas confirmadas</Text>
                                         </View>
                                     </View>
@@ -424,7 +408,6 @@ export default function AgendaScreen({ navigation }) {
                 <Text style={styles.emptyText}>Você não tem eventos futuros agendados.</Text>
             )}
           </View>
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -443,22 +426,13 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: '600' },
   iconButton: { padding: 8, marginLeft: -8 },
-  
   scrollContainer: { flexGrow: 1 },
   listContainer: { paddingHorizontal: 16, paddingBottom: 32 },
-  
   listHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, marginTop: 24, color: '#1F2937' },
-  
   itemCard: { padding: 16, marginBottom: 12, backgroundColor: 'white' },
   itemTitle: { fontSize: 16, fontWeight: '600', color: '#111827', marginBottom: 4 },
-  
   emptyContainer: { alignItems: 'center', marginTop: 10, padding: 20, backgroundColor: '#F3F4F6', borderRadius: 8 },
   emptyText: { color: '#6B7280', fontSize: 15, fontStyle: 'italic' },
-
-  eventMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 4 },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: 13, color: '#6B7280' },
-
   upcomingSection: { marginTop: 8 },
   upcomingCardNew: {
     flexDirection: 'row',
@@ -479,60 +453,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 80, 
   },
-  monthText: {
-    color: 'white',
-    fontSize: 11, 
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  dayText: {
-    color: 'white',
-    fontSize: 24, 
-    fontWeight: 'bold',
-    marginVertical: 2, 
-  },
-  separator: {
-    height: 1,
-    width: '60%',
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
-    marginVertical: 4, 
-  },
-  weekdayText: {
-    color: 'white',
-    fontSize: 12, 
-    fontWeight: '500',
-  },
-  timeText: {
-    color: 'white',
-    fontSize: 12, 
-    fontWeight: '500',
-    marginTop: 1, 
-  },
-  rightColumn: {
-    flex: 1,
-    padding: 12, 
-    justifyContent: 'center',
-  },
-  upcomingTitleNew: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-    flex: 1,
-  },
-  eventMetaRowNew: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2, 
-  },
-  metaItemNew: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
-  metaTextNew: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
+  monthText: { color: 'white', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
+  dayText: { color: 'white', fontSize: 24, fontWeight: 'bold', marginVertical: 2 },
+  separator: { height: 1, width: '60%', backgroundColor: 'rgba(255, 255, 255, 0.4)', marginVertical: 4 },
+  weekdayText: { color: 'white', fontSize: 12, fontWeight: '500' },
+  timeText: { color: 'white', fontSize: 12, fontWeight: '500', marginTop: 1 },
+  rightColumn: { flex: 1, padding: 12, justifyContent: 'center' },
+  upcomingTitleNew: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 4, flex: 1 },
+  eventMetaRowNew: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  metaItemNew: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  metaTextNew: { fontSize: 14, color: '#6B7280' },
 });

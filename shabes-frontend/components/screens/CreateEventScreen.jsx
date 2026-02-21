@@ -9,9 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator, 
-  Keyboard,
-  TextInput // Importado para permitir a digitação no stepper
+  TextInput
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -34,7 +32,6 @@ import Icon from "../ui/Icon";
 import { toast } from "../../hooks/use-toast";
 import { createEvent, getMatchesForGuest } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
-// Importação do serviço de notificações para o gatilho local
 import { showLocalNotification } from "../../services/notificationService";
 
 // Listas de Opções
@@ -46,28 +43,13 @@ const AUDIENCE_OPTIONS = [
 ];
 
 const LANGUAGE_OPTIONS = [
-  "Português",
-  "Inglês",
-  "Hebraico",
-  "Espanhol",
-  "Iídiche",
-  "Francês",
-  "Outros"
+  "Português", "Inglês", "Hebraico", "Espanhol", "Iídiche", "Francês", "Outros"
 ];
 
 const saoPauloNeighborhoods = [
-  "Higienópolis/Santa Cecilia",
-  "Pacaembú",
-  "Perdizes",
-  "Bom Retiro",
-  "Jardins",
-  "Jardim das Perdizes",
-  "Jardim Paulista",
-  "Jardim Europa",
-  "Vila Nova Conceição",
-  "Vila Madalena",
-  "Itaim Bibi",
-  "Pompeia",
+  "Higienópolis/Santa Cecilia", "Pacaembú", "Perdizes", "Bom Retiro", "Jardins",
+  "Jardim das Perdizes", "Jardim Paulista", "Jardim Europa", "Vila Nova Conceição",
+  "Vila Madalena", "Itaim Bibi", "Pompeia",
 ];
 
 export default function CreateEventScreen({ navigation }) {
@@ -78,13 +60,51 @@ export default function CreateEventScreen({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
+  // --- LÓGICA DE ESTADO INICIAL ---
+  const getInitialValidDate = () => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0); 
+    d.setDate(d.getDate() + 1); 
+    while (d.getDay() !== 5 && d.getDay() !== 6) {
+      d.setDate(d.getDate() + 1);
+    }
+    d.setHours(19, 0, 0, 0); // Horário padrão para início do Shabat
+    return d;
+  };
+
+  const getMealTypeForDate = (date) => {
+    const day = date.getDay();
+    return day === 6 ? 'almoço' : 'jantar'; 
+  };
+
+  const getInitialFormData = () => {
+    const initialDate = getInitialValidDate();
+    const initialDeadline = new Date(initialDate);
+    initialDeadline.setDate(initialDeadline.getDate() - 1);
+    initialDeadline.setHours(12, 0, 0, 0); // Horário padrão para limite de inscrição
+
+    return {
+      title: "",
+      description: "",
+      date: initialDate,
+      deadline: initialDeadline, 
+      maxGuests: 0, 
+      targetAudience: [], 
+      languages: ["Português"],
+      mealType: getMealTypeForDate(initialDate), 
+      neighborhood: "", 
+    };
+  };
+
+  const [formData, setFormData] = useState(getInitialFormData());
+
   useEffect(() => {
     const fetchGuestStatus = async () => {
       try {
         if (!user?.id) return;
         const response = await getMatchesForGuest(user.id);
-        const confirmedDates = response.data
-          .filter(m => m.status === 'accepted' || m.status === 'ACCEPTED')
+        const confirmedDates = (response.data || [])
+          .filter(m => m.status?.toLowerCase() === 'accepted')
           .map(m => new Date(m.event.date).toISOString().split('T')[0]);
         setGuestDates(confirmedDates);
       } catch (error) {
@@ -94,41 +114,11 @@ export default function CreateEventScreen({ navigation }) {
     fetchGuestStatus();
   }, [user?.id]);
 
-  const getInitialValidDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1); 
-    while (d.getDay() !== 5 && d.getDay() !== 6) {
-      d.setDate(d.getDate() + 1);
-    }
-    return d;
-  };
-
-  const getMealTypeForDate = (date) => {
-    const day = date.getDay();
-    return day === 6 ? 'almoço' : 'jantar'; 
-  };
-
-  const initialDate = getInitialValidDate();
-
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    date: initialDate,
-    deadline: new Date(initialDate.getTime() - 24 * 60 * 60 * 1000), 
-    maxGuests: 0, 
-    targetAudience: [], 
-    languages: ["Português"],
-    mealType: getMealTypeForDate(initialDate), 
-    neighborhood: "", 
-  });
-
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Função para lidar com a digitação direta do número de convidados
   const handleGuestsTextChange = (text) => {
-    // Remove qualquer caractere que não seja número
     const numericValue = text.replace(/[^0-9]/g, '');
     const finalValue = numericValue === '' ? 0 : parseInt(numericValue, 10);
     handleInputChange("maxGuests", finalValue);
@@ -151,24 +141,44 @@ export default function CreateEventScreen({ navigation }) {
 
   const onDateChange = (event, selectedDate) => {
     if (Platform.OS === "android") setShowDatePicker(false);
+    
     if (selectedDate) {
       const day = selectedDate.getDay();
       if (day !== 5 && day !== 6) {
-        Alert.alert("Data Inválida", "Eventos de Shabat só podem ser criados às Sextas-feiras ou Sábados.");
+        Alert.alert("Data Inválida", "Escolha Sexta ou Sábado.");
         return;
       }
+
+      selectedDate.setHours(19, 0, 0, 0);
+      const newDeadline = new Date(selectedDate);
+      newDeadline.setDate(newDeadline.getDate() - 1);
+      newDeadline.setHours(12, 0, 0, 0);
+
       setFormData(prev => ({
         ...prev,
         date: selectedDate,
         mealType: day === 6 ? 'almoço' : 'jantar',
-        deadline: new Date(selectedDate.getTime() - 24 * 60 * 60 * 1000)
+        deadline: newDeadline
       }));
     }
   };
 
   const onDeadlineChange = (event, selectedDate) => {
     if (Platform.OS === "android") setShowDeadlinePicker(false);
-    if (selectedDate) handleInputChange("deadline", selectedDate);
+    
+    if (selectedDate) {
+      selectedDate.setHours(12, 0, 0, 0);
+      const eventDate = new Date(formData.date);
+      eventDate.setHours(0, 0, 0, 0);
+      const chosenDeadline = new Date(selectedDate);
+      chosenDeadline.setHours(0, 0, 0, 0);
+
+      if (chosenDeadline >= eventDate) {
+        Alert.alert("Prazo Inválido", "O prazo deve ser antes do evento.");
+        return;
+      }
+      handleInputChange("deadline", selectedDate);
+    }
   };
 
   const toggleLanguage = (language) => {
@@ -194,34 +204,18 @@ export default function CreateEventScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
+    const dayOfWeek = formData.date.getDay();
+    if (dayOfWeek !== 5 && dayOfWeek !== 6) {
+      return toast({ type: "error", title: "Data Inválida", description: "Escolha Sexta ou Sábado." });
+    }
+
     const selectedDateString = formData.date.toISOString().split('T')[0];
     if (guestDates.includes(selectedDateString)) {
-      return toast({ 
-        type: "error", 
-        title: "Conflito de Agenda", 
-        description: "Você já tem um evento confirmado como convidado para este dia." 
-      });
+      return toast({ type: "error", title: "Conflito", description: "Você já tem compromisso confirmado neste dia." });
     }
 
     if (!formData.title.trim() || !formData.neighborhood) {
-      return toast({ type: "error", title: "Campos obrigatórios", description: "Preencha o título e selecione um bairro." });
-    }
-
-    if (formData.targetAudience.length === 0) {
-      return toast({ type: "error", title: "Público Alvo", description: "Selecione pelo menos um público alvo." });
-    }
-    
-    if (formData.languages.length === 0) {
-      return toast({ type: "error", title: "Idiomas", description: "Selecione pelo menos um idioma." });
-    }
-
-    const eventDate = new Date(formData.date);
-    eventDate.setHours(0,0,0,0);
-    const deadlineDate = new Date(formData.deadline);
-    deadlineDate.setHours(0,0,0,0);
-
-    if (deadlineDate >= eventDate) {
-      return toast({ type: "error", title: "Prazo inválido", description: "O prazo de inscrição deve ser ANTES do dia do evento." });
+      return toast({ type: "error", title: "Campos obrigatórios", description: "Preencha o título e o bairro." });
     }
 
     setIsLoading(true);
@@ -241,15 +235,16 @@ export default function CreateEventScreen({ navigation }) {
       };
 
       await createEvent(eventPayload);
+      
+      // 👇 RESTAURA O FORMULÁRIO PARA O ESTADO INICIAL 👇
+      setFormData(getInitialFormData());
 
-      // Notificação push local de sucesso
       await showLocalNotification("AquiTemShabes", `Evento ${formData.title} criado`);
-
       toast({ type: "success", title: "Evento criado com sucesso!" });
       navigation.goBack();
     } catch (error) {
       console.error("Erro ao criar evento:", error);
-      toast({ type: "error", title: "Erro ao criar evento", description: "Ocorreu um problema ao salvar." });
+      toast({ type: "error", title: "Erro ao criar evento" });
     } finally {
       setIsLoading(false);
     }
@@ -258,54 +253,40 @@ export default function CreateEventScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView 
-          contentContainerStyle={styles.container} 
-          keyboardShouldPersistTaps="handled" 
-          keyboardDismissMode="on-drag"
-        >
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.contentWrapper}>
             <Card style={{ width: "100%", marginBottom: 20 }}>
               <CardHeader>
                 <CardTitle>Informações do Evento</CardTitle>
-                <CardDescription>Detalhes principais, data e público.</CardDescription>
+                <CardDescription>Detalhes principais e data.</CardDescription>
               </CardHeader>
               <CardContent>
                 <View style={styles.formSection}>
                   <Label>Título do Evento</Label>
-                  <Input 
-                    value={formData.title} 
-                    onChangeText={(v) => handleInputChange("title", v)} 
-                    placeholder="Ex: Shabat Familiar em Jardins" 
-                  />
+                  <Input value={formData.title} onChangeText={(v) => handleInputChange("title", v)} placeholder="Ex: Shabat Familiar" />
                 </View>
 
                 <View style={styles.formSection}>
                   <Label>Descrição</Label>
-                  <Textarea 
-                    value={formData.description} 
-                    onChangeText={(v) => handleInputChange("description", v)} 
-                    placeholder="Conte um pouco sobre o seu evento..." 
-                  />
+                  <Textarea value={formData.description} onChangeText={(v) => handleInputChange("description", v)} placeholder="Conte sobre seu evento..." />
                 </View>
 
                 <View style={styles.formSection}>
                   <Label>Data do Evento</Label>
-                  {Platform.OS === "android" ? (
-                    <>
-                      <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-                        <Icon name="calendar-month" size={24} color="#374151" />
-                        <Text style={styles.dateButtonText}>{formData.date.toLocaleDateString("pt-BR")}</Text>
-                      </TouchableOpacity>
-                      {showDatePicker && (
-                        <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} />
-                      )}
-                    </>
-                  ) : (
-                    <View style={styles.iosPickerContainer}>
+                  <View style={styles.relativeContainer}>
+                    <View style={styles.dateButton}>
                       <Icon name="calendar-month" size={24} color="#374151" />
-                      <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} locale="pt-BR" />
+                      <Text style={styles.dateButtonText}>{formData.date.toLocaleDateString("pt-BR")}</Text>
                     </View>
-                  )}
+                    {Platform.OS === "ios" ? (
+                      <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} locale="pt-BR" style={styles.iosPickerNative} />
+                    ) : (
+                      <TouchableOpacity onPress={() => setShowDatePicker(true)} style={StyleSheet.absoluteFill} />
+                    )}
+                    {Platform.OS === "android" && showDatePicker && (
+                       <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} />
+                    )}
+                  </View>
                   <View style={styles.autoMealContainer}>
                     <Icon name={formData.mealType === 'jantar' ? "weather-night" : "weather-sunny"} size={16} color="#4F46E5" />
                     <Text style={styles.autoMealText}>{formData.date.getDay() === 5 ? "Sexta-feira | Jantar" : "Sábado | Almoço"}</Text>
@@ -314,108 +295,59 @@ export default function CreateEventScreen({ navigation }) {
 
                 <View style={styles.formSection}>
                   <Label>Data Limite para Inscrições</Label>
-                  {Platform.OS === "android" ? (
-                    <>
-                      <TouchableOpacity onPress={() => setShowDeadlinePicker(true)} style={[styles.dateButton, { borderColor: '#FFFBEB', backgroundColor: '#FFFBEB' }]}>
-                        <Icon name="clock-outline" size={24} color="#D97706" />
-                        <Text style={[styles.dateButtonText, { color: '#D97706', fontWeight: '600' }]}>{formData.deadline.toLocaleDateString("pt-BR")}</Text>
-                      </TouchableOpacity>
-                      {showDeadlinePicker && (
-                        <DateTimePicker value={formData.deadline} mode="date" display="default" onChange={onDeadlineChange} minimumDate={new Date()} />
-                      )}
-                    </>
-                  ) : (
-                    <View style={[styles.iosPickerContainer, { borderColor: '#0d00ff00', backgroundColor: '#b6b2fa00' }]}>
-                      <Icon name="clock-outline" size={24} color="#374151" />
-                      <DateTimePicker value={formData.deadline} mode="date" display="default" onChange={onDeadlineChange} minimumDate={new Date()} locale="pt-BR" />
+                  <View style={styles.relativeContainer}>
+                    <View style={[styles.dateButton, { borderColor: '#FFFBEB', backgroundColor: '#FFFBEB' }]}>
+                      <Icon name="clock-outline" size={24} color="#D97706" />
+                      <Text style={[styles.dateButtonText, { color: '#D97706', fontWeight: '600' }]}>{formData.deadline.toLocaleDateString("pt-BR")}</Text>
                     </View>
-                  )}
+                    {Platform.OS === "ios" ? (
+                      <DateTimePicker value={formData.deadline} mode="date" display="default" onChange={onDeadlineChange} minimumDate={new Date()} maximumDate={new Date(formData.date.getTime() - 24 * 60 * 60 * 1000)} locale="pt-BR" style={styles.iosPickerNative} />
+                    ) : (
+                      <TouchableOpacity onPress={() => setShowDeadlinePicker(true)} style={StyleSheet.absoluteFill} />
+                    )}
+                    {Platform.OS === "android" && showDeadlinePicker && (
+                       <DateTimePicker value={formData.deadline} mode="date" display="default" onChange={onDeadlineChange} minimumDate={new Date()} />
+                    )}
+                  </View>
                 </View>
 
-                {/* Seletor Numérico (Stepper) para Convidados com Digitação Direta */}
                 <View style={styles.formSection}>
                   <Label>Nº Limite para Convidados</Label>
                   <View style={styles.stepperContainer}>
-                    <TouchableOpacity 
-                      style={[styles.stepperButton, formData.maxGuests === 0 && styles.stepperButtonDisabled]} 
-                      onPress={decrementGuests}
-                      disabled={formData.maxGuests === 0}
-                    >
+                    <TouchableOpacity style={[styles.stepperButton, formData.maxGuests === 0 && styles.stepperButtonDisabled]} onPress={decrementGuests} disabled={formData.maxGuests === 0}>
                       <Icon name="minus" size={24} color={formData.maxGuests === 0 ? "#9CA3AF" : "#4F46E5"} />
                     </TouchableOpacity>
-                    
                     <View style={styles.stepperValueBox}>
-                      <TextInput
-                        style={styles.stepperInput}
-                        keyboardType="numeric"
-                        value={formData.maxGuests === 0 ? "" : String(formData.maxGuests)}
-                        onChangeText={handleGuestsTextChange}
-                        placeholder="Sem Limite"
-                        placeholderTextColor="#9CA3AF"
-                        maxLength={3} // Limite razoável de convidados
-                      />
+                      <TextInput style={styles.stepperInput} keyboardType="numeric" value={formData.maxGuests === 0 ? "" : String(formData.maxGuests)} onChangeText={handleGuestsTextChange} placeholder="Sem Limite" placeholderTextColor="#9CA3AF" maxLength={3} />
                     </View>
-
-                    <TouchableOpacity 
-                      style={styles.stepperButton} 
-                      onPress={incrementGuests}
-                    >
-                      <Icon name="plus" size={24} color="#4F46E5" />
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.stepperButton} onPress={incrementGuests}><Icon name="plus" size={24} color="#4F46E5" /></TouchableOpacity>
                   </View>
-                  <Text style={styles.helperText}>0 ou vazio para ilimitado.</Text>
                 </View>
 
                 <View style={styles.formSection}>
                   <Label>Público Alvo</Label>
                   <View style={styles.chipsContainer}>
-                    {AUDIENCE_OPTIONS.map((option) => {
-                      const isSelected = formData.targetAudience.includes(option.id);
-                      return (
-                        <TouchableOpacity key={option.id} style={[styles.chip, isSelected && styles.chipSelected]} onPress={() => toggleTargetAudience(option.id)}>
-                          <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>{option.label}</Text>
-                          {isSelected && <Icon name="check" size={14} color="#FFF" style={{marginLeft: 4}} />}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                <View style={styles.formSection}>
-                  <Label>Idiomas</Label>
-                  <View style={styles.chipsContainer}>
-                    {LANGUAGE_OPTIONS.map((lang) => {
-                      const isSelected = formData.languages.includes(lang);
-                      return (
-                        <TouchableOpacity key={lang} style={[styles.chip, isSelected && styles.chipSelected]} onPress={() => toggleLanguage(lang)}>
-                          <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>{lang}</Text>
-                          {isSelected && <Icon name="check" size={14} color="#FFF" style={{marginLeft: 4}} />}
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {AUDIENCE_OPTIONS.map((option) => (
+                      <TouchableOpacity key={option.id} style={[styles.chip, formData.targetAudience.includes(option.id) && styles.chipSelected]} onPress={() => toggleTargetAudience(option.id)}>
+                        <Text style={[styles.chipText, formData.targetAudience.includes(option.id) && styles.chipTextSelected]}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
               </CardContent>
             </Card>
 
             <Card style={{ width: "100%" }}>
-              <CardHeader>
-                <CardTitle>Endereço</CardTitle>
-                <CardDescription>Selecione o bairro onde ocorrerá o evento.</CardDescription>
-              </CardHeader>
+              <CardHeader><CardTitle>Endereço</CardTitle></CardHeader>
               <CardContent>
                 <View style={styles.formSection}>
                   <Label>Bairro</Label>
                   <View style={styles.chipsContainer}>
-                    {saoPauloNeighborhoods.map((bairro) => {
-                      const isSelected = formData.neighborhood === bairro;
-                      return (
-                        <TouchableOpacity key={bairro} style={[styles.chip, isSelected && styles.chipSelected]} onPress={() => handleNeighborhoodSelect(bairro)}>
-                          <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>{bairro}</Text>
-                          {isSelected && <Icon name="check" size={14} color="#FFF" style={{marginLeft: 4}} />}
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {saoPauloNeighborhoods.map((bairro) => (
+                      <TouchableOpacity key={bairro} style={[styles.chip, formData.neighborhood === bairro && styles.chipSelected]} onPress={() => handleNeighborhoodSelect(bairro)}>
+                        <Text style={[styles.chipText, formData.neighborhood === bairro && styles.chipTextSelected]}>{bairro}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
               </CardContent>
@@ -438,10 +370,10 @@ const styles = StyleSheet.create({
   container: { padding: 16, flexGrow: 1 },
   contentWrapper: { width: "100%", maxWidth: 700, alignItems: 'center' },
   formSection: { gap: 8, marginBottom: 16, width: '100%' },
-  helperText: { fontSize: 12, color: "#6B7280", marginTop: 4 },
-  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#F9FAFB", borderRadius: 8, backgroundColor: "white", gap: 8 },
+  relativeContainer: { position: 'relative', width: '100%', height: 50, justifyContent: 'center', borderRadius: 8 },
+  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, backgroundColor: "white", gap: 8, height: '100%', width: '100%' },
   dateButtonText: { fontSize: 16, color: "#374151" },
-  iosPickerContainer: { flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderColor: "#F9FAFB", borderRadius: 8, borderWidth: 1, backgroundColor: "white" },
+  iosPickerNative: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 999, opacity: 0.025 },
   autoMealContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: '#EEF2FF', padding: 8, borderRadius: 6, alignSelf: 'flex-start' },
   autoMealText: { color: '#4F46E5', fontSize: 13, fontWeight: '600' },
   stepperContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, width: '100%' },

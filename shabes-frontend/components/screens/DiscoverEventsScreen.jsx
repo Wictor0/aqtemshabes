@@ -11,6 +11,7 @@ import {
   Animated,
   Platform,
   RefreshControl,
+  TextInput // 👈 Adicionado para o novo seletor
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
@@ -22,7 +23,7 @@ import { Label } from "../ui/Label";
 import { Select } from "../ui/Select";
 import EventCard from "../cards/EventCard";
 import Icon from "@expo/vector-icons/Feather";
-import Slider from "@react-native-community/slider";
+import MaterialIcon from "@expo/vector-icons/MaterialCommunityIcons"; // 👈 Adicionado para os ícones de + e -
 
 // API functions and Hooks
 import { getEvents } from "../../services/api";
@@ -36,8 +37,8 @@ const ageGroupOptions = [
 ];
 
 const saoPauloNeighborhoods = [
-  "Higienopolis", "Santa Cecilia", "Jardim Paulista", "Jardim Europa",
-  "Vila Nova Conceição", "Perdizes", "Vila Madalena", "Itaim Bibi", "Pompeia",
+  "Higienopolis/Santa Cecilia", "Pacaembú", "Perdizes",
+  "Bom Retiro", "Jardins", "Jardim das Perdizes", "Jardim Paulista", "Jardim Europa", "Vila Nova Conceição", "Vila Madalena", "Itaim Bibi", "Pompeia",
 ];
 
 const availableLanguages = [
@@ -67,7 +68,6 @@ const isSameDay = (date1, date2) => {
   const d1 = new Date(date1);
   const d2 = new Date(date2);
   
-  // Comparação usando dia/mês/ano local para evitar problemas de fuso horário
   return (
     d1.getDate() === d2.getDate() &&
     d1.getMonth() === d2.getMonth() &&
@@ -76,27 +76,21 @@ const isSameDay = (date1, date2) => {
 };
 
 const isEventMatch = (event, filters) => {
-  // 1. Filtro de Data
   if (filters.date) { 
     if (!isSameDay(event.date, filters.date)) return false; 
   }
-  // 2. Filtro de Região (Bairros)
   if (filters.region && filters.region.length > 0) {
     const eventMatchesRegion = filters.region.some(r => event.approximate_address && event.approximate_address.includes(r));
     if (!eventMatchesRegion) return false;
   }
-  // 3. Filtro de Quantidade
   if (filters.guestCount > 0) {
-    if (event.max_guests < filters.guestCount) return false;
+    // Filtra eventos que suportam pelo menos a quantidade desejada
+    if (event.max_guests !== 0 && event.max_guests < filters.guestCount) return false;
   }
-  // 4. Filtro de Faixa Etária
   if (filters.ageGroup && filters.ageGroup !== "") {
     if (event.target_audience !== filters.ageGroup) return false;
   }
-  // 5. Filtro de Idiomas
   if (filters.languages && filters.languages.length > 0) {
-    // .every() = precisa ter TODOS os idiomas selecionados
-    // .some() = precisa ter PELO MENOS UM (geralmente melhor para UX)
     const eventHasLanguages = filters.languages.every(lang => event.languages && event.languages.includes(lang));
     if (!eventHasLanguages) return false;
   }
@@ -142,6 +136,21 @@ export default function DiscoverEventsScreen({ navigation }) {
   // Handlers de Filtros
   const handleFilterChange = (key, value) => setFilterInputs(prev => ({ ...prev, [key]: value }));
 
+  // --- Funções para o novo seletor numérico ---
+  const handleGuestsTextChange = (text) => {
+    const numericValue = text.replace(/[^0-9]/g, '');
+    const finalValue = numericValue === '' ? 0 : parseInt(numericValue, 10);
+    handleFilterChange("guestCount", finalValue);
+  };
+
+  const incrementGuests = () => {
+    handleFilterChange("guestCount", filterInputs.guestCount + 1);
+  };
+
+  const decrementGuests = () => {
+    handleFilterChange("guestCount", filterInputs.guestCount > 0 ? filterInputs.guestCount - 1 : 0);
+  };
+
   const toggleNeighborhood = (neighborhood) => {
     setFilterInputs(prev => {
         const current = prev.region;
@@ -162,25 +171,18 @@ export default function DiscoverEventsScreen({ navigation }) {
     });
   };
 
-  // --- Lógica Principal de Filtragem e Ordenação ---
   useEffect(() => {
-    // 1. Sem dados? Limpa tudo.
     if (!allEvents || allEvents.length === 0) {
         setResults({ matches: [], others: [] });
         return;
     }
-
-    // 2. Sem filtros ativos? Mostra tudo na lista principal.
     if (!activeFilters) {
       setResults({ matches: allEvents, others: [] });
       return;
     }
-    
     setIsFiltering(true);
-    
     const matchingEvents = [];
     const nonMatchingEvents = [];
-
     allEvents.forEach(event => {
       if (isEventMatch(event, activeFilters)) {
         matchingEvents.push(event);
@@ -188,28 +190,21 @@ export default function DiscoverEventsScreen({ navigation }) {
         nonMatchingEvents.push(event);
       }
     });
-
     setResults({ matches: matchingEvents, others: nonMatchingEvents });
     setIsFiltering(false); 
-
   }, [allEvents, activeFilters]);
-
 
   const applyFilters = useCallback(async () => {
     setActiveFilters({ ...filterInputs });
     if (filtersOpen) toggleFilters(); 
   }, [filterInputs, filtersOpen]);
 
-
   const fetchEvents = async () => {
     if (!refreshing) setIsLoading(true);
     try { 
       const res = await getEvents(); 
-      if (res.data) {
-          setAllEvents(res.data);
-      } else {
-          setAllEvents([]);
-      }
+      if (res.data) setAllEvents(res.data);
+      else setAllEvents([]);
     }
     catch (error) { 
        console.error("Erro ao buscar eventos:", error);
@@ -254,7 +249,6 @@ export default function DiscoverEventsScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#4F46E5"]} />
         }
       >
-        
         <Card style={styles.filterCard}>
           <TouchableOpacity onPress={toggleFilters} style={styles.filterHeader}>
             <Text style={styles.filterHeaderText}>Filtrar resultados</Text>
@@ -309,12 +303,39 @@ export default function DiscoverEventsScreen({ navigation }) {
                 ))}
               </View>
 
-              <Label>Quantidade de Pessoas: {filterInputs.guestCount === 0 ? 'Qualquer' : filterInputs.guestCount}</Label>
-              <Slider style={{ width: "100%", height: 40 }} minimumValue={0} maximumValue={20} step={1} value={filterInputs.guestCount} onValueChange={v => handleFilterChange("guestCount", v)} />
-              
-              <Label>Faixa Etária</Label>
-              <Select options={ageGroupOptions} selectedValue={filterInputs.ageGroup} onValueChange={v => handleFilterChange("ageGroup", v)} />
+              {/* 👇 NOVO SELETOR NUMÉRICO (STEPPER) APLICADO 👇 */}
+              <Label>Vagas Necessárias</Label>
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity 
+                  style={[styles.stepperButton, filterInputs.guestCount === 0 && styles.stepperButtonDisabled]} 
+                  onPress={decrementGuests}
+                  disabled={filterInputs.guestCount === 0}
+                >
+                  <MaterialIcon name="minus" size={24} color={filterInputs.guestCount === 0 ? "#9CA3AF" : "#4F46E5"} />
+                </TouchableOpacity>
+                
+                <View style={styles.stepperValueBox}>
+                  <TextInput
+                    style={styles.stepperInput}
+                    keyboardType="numeric"
+                    value={filterInputs.guestCount === 0 ? "" : String(filterInputs.guestCount)}
+                    onChangeText={handleGuestsTextChange}
+                    placeholder="Mínimo"
+                    placeholderTextColor="#9CA3AF"
+                    maxLength={2}
+                  />
+                </View>
 
+                <TouchableOpacity 
+                  style={styles.stepperButton} 
+                  onPress={incrementGuests}
+                >
+                  <MaterialIcon name="plus" size={24} color="#4F46E5" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.helperText}>Mostrar apenas eventos com esta capacidade.</Text>
+              
+              
               <Label>Idiomas Falados</Label>
               <View style={styles.chipsContainer}>
                 {availableLanguages.map((lang) => (
@@ -337,12 +358,10 @@ export default function DiscoverEventsScreen({ navigation }) {
           </Animated.View>
         </Card>
 
-        {/* Título da Lista Principal (Matches) */}
         <Text style={styles.resultsTitle}>
             {activeFilters ? `Resultados (${results.matches.length})` : `Todos os Eventos (${results.matches.length})`}
         </Text>
         
-        {/* Lista de Eventos (Matches) */}
         {isLoading && !refreshing ? (
           <ActivityIndicator size="large" style={{ marginTop: 32 }} />
         ) : (
@@ -361,7 +380,6 @@ export default function DiscoverEventsScreen({ navigation }) {
           />
         )}
 
-        {/* Seção "Outros" (Eventos que não bateram com o filtro) */}
         {!isLoading && activeFilters && results.others.length > 0 && (
             <View style={styles.othersSection}>
                 <View style={styles.divider} />
@@ -376,129 +394,42 @@ export default function DiscoverEventsScreen({ navigation }) {
                 />
             </View>
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    backgroundColor: "#F9FAFB" 
-  },
-  container: { 
-    padding: 16, 
-    flexGrow: 1 
-  },
-  filterCard: { 
-    marginBottom: 24 
-  },
-  filterHeader: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    alignItems: "center", 
-    padding: 12, 
-    backgroundColor: "white", 
-    borderRadius: 8, 
-    zIndex: 1,
-  },
-  filterHeaderText: { 
-    fontSize: 16, 
-    fontWeight: "600", 
-    color: "#374151" 
-  },
-  filtersContent: { 
-    paddingHorizontal: 12, 
-    paddingTop: 16, 
-    paddingBottom: 12, 
-    flexDirection: "column", 
-    gap: 12,
-  },
-  dateButton: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    padding: 12, 
-    borderColor: "#E5E7EB", 
-    borderRadius: 8, 
-    backgroundColor: "white", 
-    gap: 8 
-  },
-  dateButtonText: { 
-    fontSize: 16, 
-    color: "#374151" 
-  },
-  iosPickerContainer: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 8, 
-    paddingLeft: 10, 
-    backgroundColor: "white",
-  },
-  buttonContainer: { 
-    flexDirection: "row", 
-    gap: 12, 
-    marginTop: 12 
-  },
-  // Estilos de Chip para Seleção
-  chipsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 4,
-  },
-  chipSelected: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  chipUnselected: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D1D5DB",
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  chipTextSelected: {
-    color: "#FFFFFF",
-  },
-  chipTextUnselected: {
-    color: "#374151",
-  },
-  resultsTitle: { 
-    fontSize: 20, 
-    fontWeight: "600", 
-    color: "#1F2937", 
-    marginBottom: 16 
-  },
-  subtitleText: {
-    fontSize: 14,
-    color: "#6B7280", 
-    marginBottom: 16, 
-    marginTop: -8,
-  },
-  emptyContainer: { 
-    alignItems: "center", 
-    padding: 32 
-  },
-  emptyText: { 
-    fontSize: 16, 
-    color: "#6B7280", 
-    textAlign: "center" 
-  },
-  othersSection: {
-    marginTop: 16,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#E5E7EB",
-    marginVertical: 24,
-  }
+  safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
+  container: { padding: 16, flexGrow: 1 },
+  filterCard: { marginBottom: 24 },
+  filterHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: "white", borderRadius: 8, zIndex: 1 },
+  filterHeaderText: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  filtersContent: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, flexDirection: "column", gap: 12 },
+  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderColor: "#E5E7EB", borderRadius: 8, backgroundColor: "white", gap: 8 },
+  dateButtonText: { fontSize: 16, color: "#374151" },
+  iosPickerContainer: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 10, backgroundColor: "white" },
+  buttonContainer: { flexDirection: "row", gap: 12, marginTop: 12 },
+  chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
+  chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, marginBottom: 4 },
+  chipSelected: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+  chipUnselected: { backgroundColor: "#FFFFFF", borderColor: "#D1D5DB" },
+  chipText: { fontSize: 14, fontWeight: "500" },
+  chipTextSelected: { color: "#FFFFFF" },
+  chipTextUnselected: { color: "#374151" },
+  
+  // 👇 Novos estilos do Stepper 👇
+  stepperContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, width: '100%' },
+  stepperButton: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', elevation: 1 },
+  stepperButtonDisabled: { backgroundColor: '#F3F4F6', borderColor: '#F3F4F6' },
+  stepperValueBox: { flex: 1, height: 44, backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  stepperInput: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', textAlign: 'center', width: '100%', height: '100%' },
+  helperText: { fontSize: 12, color: "#6B7280", marginTop: -4, marginBottom: 4 },
+
+  resultsTitle: { fontSize: 20, fontWeight: "600", color: "#1F2937", marginBottom: 16 },
+  subtitleText: { fontSize: 14, color: "#6B7280", marginBottom: 16, marginTop: -8 },
+  emptyContainer: { alignItems: "center", padding: 32 },
+  emptyText: { fontSize: 16, color: "#6B7280", textAlign: "center" },
+  othersSection: { marginTop: 16 },
+  divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 24 }
 });

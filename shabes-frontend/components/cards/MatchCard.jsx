@@ -19,29 +19,19 @@ const MatchStatus = {
   DECLINED: "declined",
 };
 
-const getStatusBadge = (status) => {
-  switch (status) {
-    case MatchStatus.PENDING:
-      return <Badge variant="secondary">Aguardando</Badge>;
-    case MatchStatus.ACCEPTED:
-      return (
-        <Badge 
-          variant="success" 
-          style={{ backgroundColor: "#22C55E", borderColor: "#22C55E", borderWidth: 1 }}
-        >
-          <Text style={{ color: "#FFFFFF", fontWeight: "600", fontSize: 12 }}>
-            Aceito
-          </Text>
-        </Badge>
-      );
-    case MatchStatus.DECLINED:
-      return <Badge variant="destructive">Recusado</Badge>;
-    default:
-      return <Badge variant="outline">Desconhecido</Badge>;
+// Atualizado para suportar o contador de pedidos no modo container
+const getStatusBadge = (status, isEventContainer, badgeCount) => {
+  if (isEventContainer && badgeCount > 0) {
+    return (
+      <Badge variant="destructive" style={{ backgroundColor: "#F59E0B" }}>
+        <Text style={{ color: "#FFF", fontWeight: "bold" }}>{badgeCount} Pedidos</Text>
+      </Badge>
+    );
   }
 };
 
-const getStatusColor = (status) => {
+const getStatusColor = (status, isEventContainer) => {
+  if (isEventContainer) return "#4F46E5"; // Cor de destaque para seus eventos
   switch (status) {
     case MatchStatus.ACCEPTED:
       return "#22C55E";
@@ -60,14 +50,23 @@ export default function MatchCard({
 }) {
   if (!match || !match.event) return null; 
 
-  const { event, guest, status, personal_message, created_at, dependent_ids } = match;
+  const { 
+    event, 
+    status, 
+    personal_message, 
+    created_at, 
+    dependent_ids,
+    isEventContainer, // Nova prop vinda da HomeScreen
+    pendingCount,     // Nova prop vinda da HomeScreen
+    hostPhoto         // Nova prop vinda da HomeScreen
+  } = match;
+
   const isPending = status === MatchStatus.PENDING;
   const isAccepted = status === MatchStatus.ACCEPTED;
-
-  const eventTitle = match?.event?.title || "Evento sem título";
+  const eventTitle = event?.title || "Evento sem título";
   const dependentCount = dependent_ids?.length || 0;
 
-  // 👇 LÓGICA DE BLIND BOOKING (OCULTAR NOMES) 👇
+  // --- LÓGICA DE EXIBIÇÃO ATUALIZADA ---
   
   let avatarUrl = null;
   let fallbackName = "Usuário";
@@ -76,39 +75,42 @@ export default function MatchCard({
   let descriptionText = "";
 
   if (isHost) {
-    // === VISÃO DO ANFITRIÃO ===
-    // O anfitrião SEMPRE vê quem está pedindo para entrar (Guest)
-    avatarUrl = match?.guest?.avatar_url;
-    fallbackName = match?.guest?.full_name || match?.guest?.username || "Convidado";
-    displayName = match?.guest?.username || match?.guest?.full_name || "Convidado";
-    displayRole = match?.guest?.role; 
-    descriptionText = `enviou um pedido para: "${eventTitle}"`;
-
+    if (isEventContainer) {
+      // === VISÃO DE "MEU EVENTO" (CONTAINER) ===
+      avatarUrl = hostPhoto; // Exibe sua foto de anfitrião
+      fallbackName = "Anfitrião";
+      displayName = eventTitle;
+      descriptionText = event.description || "Sem descrição disponível.";
+    } else {
+      // === VISÃO DO ANfitrião SOBRE UM PEDIDO ===
+      avatarUrl = match?.guest?.avatar_url;
+      fallbackName = match?.guest?.full_name || match?.guest?.username || "Convidado";
+      displayName = match?.guest?.username || match?.guest?.full_name || "Convidado";
+      displayRole = match?.guest?.role; 
+      descriptionText = `enviou um pedido para: "${eventTitle}"`;
+    }
   } else {
-    // === VISÃO DO CONVIDADO ===
-    // O convidado só vê o nome do anfitrião SE foi aceito
+    // === VISÃO DO CONVIDADO (Blind Booking) ===
     const showHostIdentity = isAccepted;
-
     if (showHostIdentity) {
-        avatarUrl = match?.event?.host?.avatar_url;
-        fallbackName = match?.event?.host?.username || "Anfitrião";
+        avatarUrl = event?.host?.avatar_url;
+        fallbackName = event?.host?.username || "Anfitrião";
         displayName = eventTitle;
         displayRole = null;
-        descriptionText = `Aceito por ${fallbackName} ${displayRole ? `(${displayRole})` : ''}`;
+        descriptionText = `Aceito por ${fallbackName}`;
     } else {
-        // Se ainda não foi aceito, esconde tudo
-        avatarUrl = null; // Sem foto
+        avatarUrl = null;
         fallbackName = "Anfitrião"; 
-        displayName = "Evento" ; // Título do Card vira o nome do evento
+        displayName = "Evento";
         displayRole = null;
-        descriptionText = `Anfitrião da Comunidade ${displayRole ? `(${displayRole})` : ''}`;
+        descriptionText = `Anfitrião da Comunidade`;
     }
   }
 
   const finalAvatarUri = avatarUrl || `https://ui-avatars.com/api/?name=${fallbackName.replace(' ', '+')}&background=random`;
 
   return (
-    <Card style={[styles.card, { borderLeftColor: getStatusColor(status) }]}>
+    <Card style={[styles.card, { borderLeftColor: getStatusColor(status, isEventContainer) }]}>
       <CardHeader>
         <View style={styles.headerContainer}>
           
@@ -119,40 +121,45 @@ export default function MatchCard({
 
           <View style={{ flex: 1 }}>
             
-            {/* Título Principal */}
             <View style={styles.titleRow}>
-                <CardTitle style={styles.cardTitle}>
-                    {/* Se for convidado e pendente, mostra título do evento. Se aceito, mostra anfitrião */}
-                    {!isHost && !isAccepted ? eventTitle : displayName}
+                <CardTitle style={styles.cardTitle} numberOfLines={1}>
+                    {displayName}
                 </CardTitle>
-                {/* Mostra selo apenas se tiver role visível */}
                 {displayRole && <VerifiedBadge role={displayRole} size={16} />}
             </View>
             
-            {/* Descrição */}
             <View style={styles.descRow}>
-                <CardDescription>
+                <CardDescription numberOfLines={isEventContainer ? 2 : 1}>
                     {descriptionText}
                 </CardDescription>
             </View>
             
           </View>
           <View style={styles.headerRight}>
-            {getStatusBadge(status)}
+            {getStatusBadge(status, isEventContainer, pendingCount)}
           </View>
         </View>
       </CardHeader>
 
       <CardContent>
         <View style={styles.detailsBox}>
+          {/* Data do Evento */}
           <View style={styles.infoRow}>
-            <Icon name="calendar-month-outline" size={16} color="#6B7280" />
-            <Text style={styles.infoText}>
-              {formatShabbatDate(new Date(event.date))}
+            <Icon name="calendar-month-outline" size={16} color={isEventContainer ? "#4F46E5" : "#6B7280"} />
+            <Text style={[styles.infoText, isEventContainer && { color: "#4F46E5", fontWeight: "600" }]}>
+              Realização: {formatShabbatDate(new Date(event.date))}
             </Text>
           </View>
           
-          {dependentCount > 0 && (
+          {/* Data de Criação (Exibida no Container do Host) */}
+          <View style={styles.infoRow}>
+            <Icon name="plus-circle-outline" size={16} color="#6B7280" />
+            <Text style={styles.infoText}>
+              Criado em: {new Date(event.created_at).toLocaleDateString("pt-BR")}
+            </Text>
+          </View>
+
+          {!isEventContainer && dependentCount > 0 && (
             <View style={styles.infoRow}>
               <Icon name="account-group-outline" size={16} color="#6B7280" />
               <Text style={styles.infoText}>
@@ -162,7 +169,7 @@ export default function MatchCard({
           )}
         </View>
 
-        {personal_message && (
+        {personal_message && !isEventContainer && (
           <View style={styles.messageContainer}>
             <Text style={styles.messageLabel}>
               {isHost ? "Mensagem do interessado:" : "Sua mensagem:"}
@@ -171,13 +178,7 @@ export default function MatchCard({
           </View>
         )}
 
-        <View style={styles.footerContainer}>
-          <Text style={styles.timestamp}>
-            Criado: {new Date(created_at).toLocaleString("pt-BR")}
-          </Text>
-        </View>
-
-        {isHost && isPending && (
+        {isHost && isPending && !isEventContainer && (
           <View style={styles.actionsContainer}>
             <Button
               onPress={() => onAccept?.(match.id)}
@@ -194,6 +195,14 @@ export default function MatchCard({
             >
               Recusar
             </Button>
+          </View>
+        )}
+
+        {/* Rodapé informativo para containers de evento */}
+        {isEventContainer && (
+          <View style={styles.footerContainer}>
+            <Text style={styles.viewDetailsText}>Gerenciar participantes</Text>
+            <Icon name="chevron-right" size={16} color="#4F46E5" />
           </View>
         )}
       </CardContent>
@@ -225,20 +234,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 4,
+    marginTop: 2,
   },
-  headerRight: { alignItems: "flex-end", gap: 8 },
-  cardTitle: { fontSize: 18, lineHeight: 22 },
+  headerRight: { alignItems: "flex-end", gap: 8, marginLeft: 8 },
+  cardTitle: { fontSize: 18, lineHeight: 22, fontWeight: "700" },
   detailsBox: {
     backgroundColor: "#F9FAFB",
     padding: 12,
     borderRadius: 8,
-    gap: 8,
+    gap: 6,
     borderWidth: 1,
     borderColor: "#F3F4F6",
     marginTop: 4,
   },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  infoText: { fontSize: 14, color: "#6B7280" },
+  infoText: { fontSize: 13, color: "#6B7280" },
   messageContainer: {
     backgroundColor: "#F3E8FF",
     padding: 12,
@@ -252,7 +262,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   messageText: { fontStyle: "italic", color: "#6D28D9" },
-  footerContainer: { marginTop: 12 },
+  footerContainer: { 
+    marginTop: 12, 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    paddingTop: 10
+  },
+  viewDetailsText: { fontSize: 12, fontWeight: "600", color: "#4F46E5" },
   timestamp: { fontSize: 12, color: "#9CA3AF" },
   actionsContainer: { flexDirection: "row", paddingTop: 16, gap: 8 },
 });

@@ -3,7 +3,7 @@
     "name": "AquiTemShabes",
     "slug": "aqtemshabes",
     "scheme": "aquitemshabes",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/images/Logo_AQUITEM.png",
     "userInterfaceStyle": "light",
@@ -23,23 +23,29 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aquitem.aqtemshabes",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSCameraUsageDescription": "O aplicativo precisa acessar sua câmera para que você possa tirar uma selfie de validação da sua conta.",
+        "NSPhotoLibraryUsageDescription": "O aplicativo precisa acessar suas fotos para que você possa escolher sua imagem de perfil."
       }
     },
     "android": {
       "package": "com.aquitem.aqtemshabes",
-      "versionCode": 1,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
         "NOTIFICATIONS",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -52,6 +58,13 @@
         {
           "icon": "./assets/images/Logo_AQUITEM.png",
           "color": "#4F46E5"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O aplicativo precisa acessar suas fotos para que você possa escolher sua imagem de perfil.",
+          "cameraPermission": "O aplicativo precisa acessar sua câmera para que você possa tirar uma selfie de validação da sua conta."
         }
       ]
     ],

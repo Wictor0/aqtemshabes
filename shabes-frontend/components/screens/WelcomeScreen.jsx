@@ -32,15 +32,11 @@ import { useAuth } from "../../context/AuthContext";
 import ViewIcon from "../../assets/icons/ViewIcon";
 import HideIcon from "../../assets/icons/HideIcon";
 
-
 export default function WelcomeScreen({ navigation }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  // const [inviteCode, setInviteCode] = useState(""); // 👈 REMOVIDO
   const [isLoading, setIsLoading] = useState(false);
-
-  // 👇 estado pra controlar visibilidade da senha
   const [showPassword, setShowPassword] = useState(false);
 
   const handleSignIn = async () => {
@@ -57,46 +53,26 @@ export default function WelcomeScreen({ navigation }) {
     setIsLoading(false);
   };
 
-  // 👈 FUNÇÃO DE CÓDIGO DE CONVITE REMOVIDA
-  /*
-  const handleInviteCode = () => {
-    if (!inviteCode.trim()) {
-      toast({
-        type: "error",
-        title: "Erro",
-        description: "Digite um código de convite.",
-      });
-      return;
-    }
-    const validCodes = ["SHALOM2025", "SHABBAT2024"];
-    if (validCodes.includes(inviteCode.toUpperCase())) {
-      navigation.navigate("SignUp", { inviteCode });
-    } else {
-      toast({
-        type: "error",
-        title: "Código Inválido",
-        description: "O código de convite não foi encontrado.",
-      });
-    }
-  };
-  */
-
-  // 👇 ATUALIZADO: Navega para a tela de Diretrizes antes do cadastro
   const handleSignUpNavigation = () => {
     navigation.navigate("Guidelines");
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={{ flex: 1 }}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={true} // 👈 Scroll agora está livre
+          showsVerticalScrollIndicator={false}
         >
-          <ScrollView
-            contentContainerStyle={styles.container}
-            keyboardShouldPersistTaps="always"
-          >
+          {/* TouchableWithoutFeedback aqui dentro garante que o clique fora 
+             feche o teclado sem travar o movimento de subida e descida.
+          */}
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.contentWrapper}>
               <View style={styles.heroSection}>
                 <LinearGradient
@@ -116,7 +92,8 @@ export default function WelcomeScreen({ navigation }) {
                   Quando uma porta se abre, nossa tradição permanece.
                 </Text>
               </View>
-              <Card style={{ width: "100%" }}>
+
+              <Card style={{ width: "100%", marginTop: -25 }}>
                 <CardHeader>
                   <CardTitle>Já tem conta?</CardTitle>
                   <CardDescription>Entre com suas credenciais</CardDescription>
@@ -139,8 +116,7 @@ export default function WelcomeScreen({ navigation }) {
                         value={password}
                         onChangeText={setPassword}
                         placeholder="••••••••"
-                        // 👇 Corrigido: secureTextEntry é a prop correta
-                        secureTextEntry={!showPassword} 
+                        secureTextEntry={!showPassword}
                         style={{ flex: 1 }}
                       />
                       <TouchableOpacity
@@ -151,7 +127,7 @@ export default function WelcomeScreen({ navigation }) {
                           <HideIcon width={22} height={22} color="#6B7280" />
                         ) : (
                           <ViewIcon width={22} height={22} color="#6B7280" />
-                        )} 
+                        )}
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -171,14 +147,13 @@ export default function WelcomeScreen({ navigation }) {
                   </Button>
                 </CardFooter>
               </Card>
-              
+
               <Card style={{ width: "100%" }}>
                 <CardContent>
-                  <CardTitle> Novo usuário?
-                  </CardTitle>
+                  <CardTitle> Novo usuário? </CardTitle>
                   <Button
-                    style={{ flex: 1 , marginTop: 8}}
-                    onPress={handleSignUpNavigation} // 👈 Chama a navegação atualizada
+                    style={{ flex: 1, marginTop: 8 }}
+                    onPress={handleSignUpNavigation}
                     variant="host"
                   >
                     Criar Conta
@@ -186,17 +161,17 @@ export default function WelcomeScreen({ navigation }) {
                 </CardContent>
               </Card>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F3F4F6" },
   container: {
-    flexGrow: 1,
+    flexGrow: 1, // 👈 Essencial para o scroll funcionar com conteúdo centralizado
     padding: 20,
     justifyContent: "center",
     alignItems: "center",
@@ -206,6 +181,7 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     gap: 24,
     alignItems: "center",
+    paddingBottom: 40,
   },
   heroSection: { alignItems: "center", gap: 12, marginBottom: 16 },
   logoContainer: {
@@ -221,7 +197,6 @@ const styles = StyleSheet.create({
     height: "100%",
     resizeMode: "contain",
   },
-  title: { fontSize: 32, fontWeight: "bold", color: "#1F2937" },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center" },
   formSection: { width: "100%", gap: 8, marginBottom: 4 },
 });

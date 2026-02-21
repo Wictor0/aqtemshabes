@@ -101,7 +101,6 @@ export const signUp = async (userData) => {
   
   if (!finalData.metadata) finalData.metadata = {};
 
-  // 1. Geração de Username
   const fullName = finalData.name || finalData.metadata.full_name;
   if (fullName) {
     const generated = generateUsername(fullName);
@@ -110,11 +109,9 @@ export const signUp = async (userData) => {
     finalData.metadata.full_name = fullName;
   }
 
-  // 2. Processamento da Foto de Perfil (Avatar)
   const avatarUri = finalData.image || finalData.avatar_url || (finalData.metadata && finalData.metadata.image);
   if (avatarUri && typeof avatarUri === 'string' && avatarUri.startsWith('file://')) {
     try {
-      console.log("[API] Convertendo Avatar...");
       const base64Avatar = await uriToBase64(avatarUri);
       finalData.avatar_url = base64Avatar;
       finalData.metadata.avatar_url = base64Avatar;
@@ -124,11 +121,9 @@ export const signUp = async (userData) => {
     }
   }
 
-  // 3. Processamento da Foto de Rosto (Selfie de Identidade)
   const facePhotoUri = finalData.face_photo_url;
   if (facePhotoUri && typeof facePhotoUri === 'string' && facePhotoUri.startsWith('file://')) {
     try {
-      console.log("[API] Convertendo Foto de Rosto...");
       const base64Face = await uriToBase64(facePhotoUri);
       finalData.face_photo_url = base64Face;
     } catch (err) {
@@ -136,7 +131,6 @@ export const signUp = async (userData) => {
     }
   }
 
-  // 4. Sincronização de Metadados Adicionais
   if (finalData.dietaryRestrictions) {
     finalData.metadata.dietaryRestrictions = finalData.dietaryRestrictions;
   }
@@ -159,13 +153,19 @@ export const getEvents = () => api.get('/events', noCacheConfig);
 export const getEventById = (eventId) => api.get(`/events/${eventId}`, noCacheConfig);
 export const createEvent = (eventData) => api.post('/events', eventData);
 
+/**
+ * Busca todos os eventos criados por um anfitrião específico.
+ */
+export const getEventsByHost = (hostId) => 
+  api.get(`/events?host_id=${hostId}`, noCacheConfig);
+
 // --- Matches ---
 export const createMatch = (matchData) => api.post('/matches', matchData);
 export const getMatchById = (matchId) => api.get(`/matches?id=${matchId}`, noCacheConfig);
 export const updateMatchStatus = (matchId, status) => api.patch(`/matches/${matchId}`, { status });
 
 /**
- * Busca todos os convidados ACEITOS de um evento (Usado para o PDF/Carômetro)
+ * Busca todos os convidados ACEITOS de um evento
  */
 export const getAcceptedGuestsByEvent = (eventId) => 
   api.get(`/matches?event_id=${eventId}&status=accepted`, noCacheConfig);
@@ -195,5 +195,8 @@ export const getMatchesForHost = (hostId) =>
 
 // --- Dependentes ---
 export const getDependents = () => api.get('/dependents', noCacheConfig);
+export const createDependent = (dependentData) => api.post('/dependents', dependentData);
+export const updateDependent = (dependentId, dependentData) => api.patch(`/dependents/${dependentId}`, dependentData);
+export const deleteDependent = (dependentId) => api.delete(`/dependents/${dependentId}`);
 
 export default api;

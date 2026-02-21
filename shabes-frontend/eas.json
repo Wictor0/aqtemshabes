@@ -9,7 +9,10 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      }
     },
     "production": {
       "distribution": "store",
@@ -17,6 +20,7 @@
     }
   },
   "submit": {
+    "preview": {},
     "production": {}
   }
 }
