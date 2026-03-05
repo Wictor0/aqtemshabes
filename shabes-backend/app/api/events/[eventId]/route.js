@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 // Desabilita o cache para garantir dados sempre atualizados
 export const dynamic = 'force-dynamic';
 
+// Cliente para operações públicas (Leitura)
 const createPublicSupabaseClient = () => {
     return createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,9 +12,16 @@ const createPublicSupabaseClient = () => {
     );
 };
 
+// 👇 NOVO: Cliente Admin para ignorar RLS (Escrita/Exclusão)
+const createAdminSupabaseClient = () => {
+    return createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY // 👈 Certifique-se de que esta variável está no Render
+    );
+};
+
 /**
  * GET /api/events/[id]
- * Busca detalhes do evento, incluindo tokens para notificações.
  */
 export async function GET(request, { params }) {
     try {
@@ -31,22 +39,11 @@ export async function GET(request, { params }) {
             .select(`
                 *,
                 host:profiles!events_host_id_fkey (
-                    id,
-                    full_name,
-                    username,
-                    avatar_url,
-                    phone,
-                    push_token
+                    id, full_name, username, avatar_url, phone, push_token
                 ),
                 matches (
-                    id,
-                    status,
-                    personal_message,
-                    guest:profiles (
-                        id,
-                        full_name,
-                        push_token
-                    )
+                    id, status, personal_message,
+                    guest:profiles ( id, full_name, push_token )
                 )
             `)
             .eq('id', eventId)
@@ -75,9 +72,8 @@ export async function GET(request, { params }) {
 }
 
 /**
- * 👇 NOVA FUNÇÃO ADICIONADA 👇
  * DELETE /api/events/[id]
- * Remove o evento e, por cascata, os matches relacionados.
+ * Agora usando privilégios administrativos para garantir a remoção.
  */
 export async function DELETE(request, { params }) {
     try {
@@ -87,13 +83,14 @@ export async function DELETE(request, { params }) {
             return NextResponse.json({ error: 'ID do evento inválido para exclusão.' }, { status: 400 });
         }
 
-        const supabase = createPublicSupabaseClient();
-        console.log(`[DELETE_EVENT] Solicitada exclusão do evento: ${eventId}`);
+        // 👇 Mudança para o cliente ADMIN
+        const supabaseAdmin = createAdminSupabaseClient();
+        console.log(`[DELETE_EVENT] Solicitada exclusão do evento (ADMIN MODE): ${eventId}`);
 
-        // Executa a deleção no Supabase
-        const { error } = await supabase
+        // Executa a deleção com contagem exata para verificação
+        const { error, count } = await supabaseAdmin
             .from('events')
-            .delete()
+            .delete({ count: 'exact' }) 
             .eq('id', eventId);
 
         if (error) {
@@ -102,12 +99,18 @@ export async function DELETE(request, { params }) {
                 message: error.message
             });
             return NextResponse.json({ 
-                error: 'Não foi possível deletar o evento no banco de dados.',
+                error: 'Erro no banco de dados ao excluir.',
                 details: error.message 
             }, { status: 500 });
         }
 
-        console.log(`[DELETE_EVENT] Evento ${eventId} removido com sucesso.`);
+        // 👇 Se count for 0, o evento não existia ou o comando falhou silenciosamente
+        if (count === 0) {
+            console.warn(`[DELETE_EVENT] Nenhuma linha foi removida para o ID: ${eventId}`);
+            return NextResponse.json({ error: 'O evento não foi encontrado ou já foi removido.' }, { status: 404 });
+        }
+
+        console.log(`[DELETE_EVENT] Evento ${eventId} e dependências removidos com sucesso. Linhas afetadas: ${count}`);
 
         return NextResponse.json({ message: 'Evento removido com sucesso!' }, { status: 200 });
 
