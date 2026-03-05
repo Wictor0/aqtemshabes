@@ -68,7 +68,7 @@ export default function CreateEventScreen({ navigation }) {
     while (d.getDay() !== 5 && d.getDay() !== 6) {
       d.setDate(d.getDate() + 1);
     }
-    d.setHours(19, 0, 0, 0); // Horário padrão para início do Shabat
+    d.setHours(19, 0, 0, 0); 
     return d;
   };
 
@@ -81,7 +81,7 @@ export default function CreateEventScreen({ navigation }) {
     const initialDate = getInitialValidDate();
     const initialDeadline = new Date(initialDate);
     initialDeadline.setDate(initialDeadline.getDate() - 1);
-    initialDeadline.setHours(12, 0, 0, 0); // Horário padrão para limite de inscrição
+    initialDeadline.setHours(12, 0, 0, 0); 
 
     return {
       title: "",
@@ -206,7 +206,7 @@ export default function CreateEventScreen({ navigation }) {
   const handleSubmit = async () => {
     const dayOfWeek = formData.date.getDay();
     if (dayOfWeek !== 5 && dayOfWeek !== 6) {
-      return toast({ type: "error", title: "Data Inválida", description: "Escolha Sexta ou Sábado." });
+      return toast({ type: "error", title: "Data Inválida", description: "Escolha uma Sexta ou Sábado." });
     }
 
     const selectedDateString = formData.date.toISOString().split('T')[0];
@@ -236,7 +236,6 @@ export default function CreateEventScreen({ navigation }) {
 
       await createEvent(eventPayload);
       
-      // 👇 RESTAURA O FORMULÁRIO PARA O ESTADO INICIAL 👇
       setFormData(getInitialFormData());
 
       await showLocalNotification("AquiTemShabes", `Evento ${formData.title} criado`);
@@ -330,6 +329,22 @@ export default function CreateEventScreen({ navigation }) {
                     {AUDIENCE_OPTIONS.map((option) => (
                       <TouchableOpacity key={option.id} style={[styles.chip, formData.targetAudience.includes(option.id) && styles.chipSelected]} onPress={() => toggleTargetAudience(option.id)}>
                         <Text style={[styles.chipText, formData.targetAudience.includes(option.id) && styles.chipTextSelected]}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* 👇 NOVA SEÇÃO DE IDIOMAS ADICIONADA AQUI 👇 */}
+                <View style={[styles.formSection, { marginTop: 8 }]}>
+                  <Label>Idiomas Falados</Label>
+                  <View style={styles.chipsContainer}>
+                    {LANGUAGE_OPTIONS.map((lang) => (
+                      <TouchableOpacity 
+                        key={lang} 
+                        style={[styles.chip, formData.languages.includes(lang) && styles.chipSelected]} 
+                        onPress={() => toggleLanguage(lang)}
+                      >
+                        <Text style={[styles.chipText, formData.languages.includes(lang) && styles.chipTextSelected]}>{lang}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>

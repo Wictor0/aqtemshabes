@@ -17,7 +17,6 @@ const createPublicSupabaseClient = () => {
  */
 export async function GET(request, { params }) {
     try {
-        // Captura do ID de forma robusta
         const eventId = params?.id || params?.eventId; 
         
         if (!eventId || eventId === 'undefined' || eventId === 'null') {
@@ -25,14 +24,8 @@ export async function GET(request, { params }) {
         }
 
         const supabase = createPublicSupabaseClient();
-
         console.log(`[GET_EVENT] Iniciando busca para o evento: ${eventId}`);
 
-        /**
-         * ATUALIZAÇÃO CRÍTICA:
-         * Alterado de 'matches:event_matches' para apenas 'matches'.
-         * De acordo com os logs do Render, o Supabase identifica a relação como 'matches'.
-         */
         const { data, error } = await supabase
             .from('events')
             .select(`
@@ -60,23 +53,11 @@ export async function GET(request, { params }) {
             .single();
 
         if (error) {
-            // Log detalhado para diagnóstico no Render
-            console.error("[GET_EVENT] Erro na consulta Supabase:", {
-                code: error.code,
-                message: error.message,
-                details: error.details,
-                hint: error.hint
-            });
-
+            console.error("[GET_EVENT] Erro na consulta Supabase:", error);
             if (error.code === 'PGRST116') { 
                 return NextResponse.json({ error: 'Evento não encontrado' }, { status: 404 });
             }
-            
-            // Retorna o erro específico do banco para ajudar no debug do frontend
-            return NextResponse.json({ 
-                error: 'Erro na consulta ao banco de dados', 
-                details: error.message 
-            }, { status: 500 });
+            return NextResponse.json({ error: 'Erro no banco', details: error.message }, { status: 500 });
         }
 
         return NextResponse.json(data, {
@@ -87,11 +68,53 @@ export async function GET(request, { params }) {
                 'Expires': '0',
             }
         });
+    } catch (e) {
+        console.error('[GET_EVENT] Erro crítico:', e);
+        return NextResponse.json({ error: 'Erro interno.', message: e.message }, { status: 500 });
+    }
+}
+
+/**
+ * 👇 NOVA FUNÇÃO ADICIONADA 👇
+ * DELETE /api/events/[id]
+ * Remove o evento e, por cascata, os matches relacionados.
+ */
+export async function DELETE(request, { params }) {
+    try {
+        const eventId = params?.id || params?.eventId;
+
+        if (!eventId || eventId === 'undefined' || eventId === 'null') {
+            return NextResponse.json({ error: 'ID do evento inválido para exclusão.' }, { status: 400 });
+        }
+
+        const supabase = createPublicSupabaseClient();
+        console.log(`[DELETE_EVENT] Solicitada exclusão do evento: ${eventId}`);
+
+        // Executa a deleção no Supabase
+        const { error } = await supabase
+            .from('events')
+            .delete()
+            .eq('id', eventId);
+
+        if (error) {
+            console.error("[DELETE_EVENT] Erro ao deletar no Supabase:", {
+                code: error.code,
+                message: error.message
+            });
+            return NextResponse.json({ 
+                error: 'Não foi possível deletar o evento no banco de dados.',
+                details: error.message 
+            }, { status: 500 });
+        }
+
+        console.log(`[DELETE_EVENT] Evento ${eventId} removido com sucesso.`);
+
+        return NextResponse.json({ message: 'Evento removido com sucesso!' }, { status: 200 });
 
     } catch (e) {
-        console.error('[GET_EVENT] Erro crítico inesperado:', e);
+        console.error('[DELETE_EVENT] Erro crítico inesperado:', e);
         return NextResponse.json({ 
-            error: 'Erro interno no servidor.',
+            error: 'Erro interno no servidor ao tentar excluir.',
             message: e.message 
         }, { status: 500 });
     }

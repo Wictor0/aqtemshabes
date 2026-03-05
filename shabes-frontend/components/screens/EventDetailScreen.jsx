@@ -38,7 +38,9 @@ import {
   updateMatchStatus, 
   getEvents,
   getAcceptedGuestsByEvent,
-  getMatchesForHost 
+  getMatchesForHost,
+  getMatchesForGuest,
+  deleteEvent // 👈 Adicionado para a nova funcionalidade
 } from "../../services/api"; 
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
@@ -145,6 +147,19 @@ export default function EventDetailScreen({ route, navigation }) {
 
       const isUserHost = user?.id === eventData.host_id;
 
+      const { data: guestMatches } = await getMatchesForGuest(user.id);
+      const existingMatch = (guestMatches || []).find(m => String(m.event_id) === String(eventId));
+      
+      if (existingMatch) {
+        setMatchDetails(existingMatch);
+        if (existingMatch.guest?.dependents && existingMatch.dependent_ids) {
+          const attending = existingMatch.guest.dependents.filter(dep => 
+            existingMatch.dependent_ids.includes(dep.id)
+          );
+          setAttendingDependents(attending);
+        }
+      }
+
       if (isUserHost) {
         const { data: hostMatches } = await getMatchesForHost(user.id);
         const filtered = (hostMatches || []).filter(m => String(m.event_id) === String(eventId));
@@ -173,6 +188,34 @@ export default function EventDetailScreen({ route, navigation }) {
   useEffect(() => {
     fetchEventData();
   }, [fetchEventData]);
+
+  // 👇 LÓGICA DE DELETAR EVENTO 👇
+  const handleDeleteEvent = async () => {
+    Alert.alert(
+      "Confirmar Exclusão",
+      "Tem certeza que deseja cancelar este evento? Esta ação é irreversível e removerá todos os pedidos de participação associados.",
+      [
+        { text: "Manter Evento", style: "cancel" },
+        { 
+          text: "Sim, Deletar", 
+          style: "destructive", 
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              await deleteEvent(eventId);
+              toast({ type: "success", title: "Evento cancelado", description: "O Shabat foi removido com sucesso." });
+              navigation.goBack(); 
+            } catch (error) {
+              console.error("Erro ao deletar:", error);
+              toast({ type: "error", title: "Erro ao deletar", description: "Não foi possível excluir o evento." });
+            } finally {
+              setActionLoading(false);
+            }
+          } 
+        }
+      ]
+    );
+  };
 
   useEffect(() => {
     if (showInterestForm) {
@@ -311,6 +354,15 @@ export default function EventDetailScreen({ route, navigation }) {
   };
 
   const handleExpressInterest = async () => {
+    if (matchDetails) {
+        await showLocalNotification("AquiTemShabes", "Você já fez um pedido para este evento.");
+        return toast({ 
+          type: "error", 
+          title: "Pedido já realizado", 
+          description: "Não é permitido enviar mais de um pedido para o mesmo evento." 
+        });
+    }
+
     const eventDateString = new Date(event.date).toISOString().split('T')[0];
     if (hostedDates.includes(eventDateString)) {
       return toast({ 
@@ -423,10 +475,10 @@ export default function EventDetailScreen({ route, navigation }) {
 
   const isUserHost = user?.id === event.host_id;
   const hostAgeGroup = event.host ? calculateAgeGroup(event.host.birth_date) : null;
-  const showInterestButton = !isUserHost && origin !== "home" && origin !== "agenda";
-  const showMatchDetails = (origin === "home" || origin === "agenda") && matchDetails && !isUserHost;
+  const showInterestButton = !isUserHost && origin !== "home" && origin !== "agenda" && !matchDetails; 
+  const showMatchDetails = ((origin === "home" || origin === "agenda") || matchDetails) && matchDetails && !isUserHost; 
   const isMatchAccepted = showMatchDetails && matchDetails.status === 'accepted';
-  const showWhatsAppButton = !isUserHost && isMatchAccepted; // Comportamento mantido para convidados
+  const showWhatsAppButton = !isUserHost && isMatchAccepted; 
   const addressToShow = (isMatchAccepted || isUserHost) ? event.full_address : event.approximate_address;
   const showHostIdentity = isUserHost || isMatchAccepted;
   const hostDisplayName = showHostIdentity ? (event.host?.username || event.host?.full_name || "Anfitrião") : "Anfitrião da Comunidade";
@@ -490,19 +542,35 @@ export default function EventDetailScreen({ route, navigation }) {
                 </View>
 
                 {isUserHost && (
-                  <Button variant="outline" onPress={handleExportAttendanceList} disabled={isExporting} style={styles.exportButton}>
-                    {isExporting ? <ActivityIndicator size="small" color="#4F46E5" /> : (
-                      <>
-                        <Icon name="file-pdf-box" size={20} color="#4F46E5" style={{ marginRight: 8 }} />
-                        <Text style={{ color: '#4F46E5', fontWeight: 'bold' }}>Exportar Lista (Carômetro)</Text>
-                      </>
-                    )}
-                  </Button>
+                  <View style={{ gap: 12, marginTop: 20 }}>
+                    <Button variant="outline" onPress={handleExportAttendanceList} disabled={isExporting} style={styles.exportButton}>
+                        {isExporting ? <ActivityIndicator size="small" color="#4F46E5" /> : (
+                        <>
+                            <Icon name="file-pdf-box" size={20} color="#4F46E5" style={{ marginRight: 8 }} />
+                            <Text style={{ color: '#4F46E5', fontWeight: 'bold' }}>Exportar Lista (Carômetro)</Text>
+                        </>
+                        )}
+                    </Button>
+
+                    {/* 👇 NOVO BOTÃO DE DELETAR EVENTO 👇 */}
+                    <Button 
+                        variant="destructive" 
+                        onPress={handleDeleteEvent} 
+                        disabled={actionLoading} 
+                        style={styles.deleteButton}
+                    >
+                        {actionLoading ? <ActivityIndicator size="small" color="#FFF" /> : (
+                        <>
+                            <Icon name="trash-can-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Deletar Evento</Text>
+                        </>
+                        )}
+                    </Button>
+                  </View>
                 )}
               </CardContent>
             </Card>
 
-             {/* SEÇÃO DO ANFITRIÃO: GESTÃO DE PEDIDOS */}
              {isUserHost && (
               <View style={{ width: '100%', marginTop: 8 }}>
                 <Text style={styles.sectionTitle}>Pedidos de Participação ({eventRequests.length})</Text>
@@ -556,7 +624,6 @@ export default function EventDetailScreen({ route, navigation }) {
                             </View>
                           )}
 
-                          {/* 👇 BOTÃO WHATSAPP: Sempre visível para o anfitrião 👇 */}
                           <TouchableOpacity 
                             style={styles.whatsappActionRow} 
                             onPress={() => handleOpenWhatsApp(request)}
@@ -574,7 +641,6 @@ export default function EventDetailScreen({ route, navigation }) {
               </View>
             )}
 
-            {/* SEÇÃO DO CONVIDADO: DETALHES DO PEDIDO */}
             {showMatchDetails && (
               <Card style={{ width: "100%" }}>
                 <CardHeader>
@@ -610,7 +676,7 @@ export default function EventDetailScreen({ route, navigation }) {
               </Card>
             )}
 
-            {showInterestButton && !matchDetails && (
+            {showInterestButton && (
               <>
                 {isDeadlinePassed ? (
                     <Card style={{ width: "100%", borderColor: '#DC2626' }}>
@@ -688,7 +754,8 @@ const styles = StyleSheet.create({
   participantCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8 },
   whatsappButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#25D366', padding: 14, borderRadius: 12, marginTop: 20 },
   whatsappButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  exportButton: { marginTop: 20, borderStyle: 'dashed', borderColor: '#4F46E5', width: '100%', height: 50, paddingVertical: 12 },
+  exportButton: { borderStyle: 'dashed', borderColor: '#4F46E5', width: '100%', height: 50, paddingVertical: 12 },
+  deleteButton: { width: '100%', height: 50, backgroundColor: '#DC2626' }, // 👈 Estilo do botão deletar
   requestItemCard: { marginBottom: 12, borderColor: '#E5E7EB' },
   requestHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   guestProfileInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },

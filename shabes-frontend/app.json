@@ -3,7 +3,7 @@
     "name": "AquiTemShabes",
     "slug": "aqtemshabes",
     "scheme": "aquitemshabes",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "orientation": "portrait",
     "icon": "./assets/images/Logo_AQUITEM.png",
     "userInterfaceStyle": "light",

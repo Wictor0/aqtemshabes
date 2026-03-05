@@ -14,7 +14,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { Card } from "../ui/Card";
 import { useAuth } from "../../context/AuthContext";
-import { getMatchesForGuest, getMatchesForHost } from "../../services/api";
+import { getMatchesForGuest, getMatchesForHost, getEventsByHost } from "../../services/api"; // 👈 Adicionado getEventsByHost
 import { toast } from "../../hooks/use-toast";
 import Icon from "../ui/Icon"; 
 
@@ -56,16 +56,23 @@ const getJewishDay = (date) => {
   }
 };
 
-// Datas judaicas fixas
+// Datas judaicas 2026
 const jewishEvents = [
     { name: "Ano Novo Judaico", hebrewName: "Rosh Hashaná", date: "2025-09-22" },
     { name: "Dia do Perdão", hebrewName: "Yom Kipur", date: "2025-10-01" },
     { name: "Festa das Cabanas", hebrewName: "Sukkot", date: "2025-10-06" },
     { name: "Alegria da Torá", hebrewName: "Simchat Torá", date: "2025-10-13" },
     { name: "Festival das Luzes", hebrewName: "Chanukah", date: "2025-12-27" },
-    { name: "Festa das Sortes", hebrewName: "Purim", date: "2025-03-14" },
-    { name: "Festa das Colheitas", hebrewName: "Shavuot", date: "2025-06-04" },
-    { name: "Dia de Luto", hebrewName: "Tish'a B'Av", date: "2025-07-14" },
+    { name: "Festa das Sortes", hebrewName: "Purim", date: "2026-03-03" },
+    { name: "Páscoa Judaica", hebrewName: "Pesach", date: "2026-04-02" },
+    { name: "Dia da Independência", hebrewName: "Yom HaAtzma'ut", date: "2026-04-22" },
+    { name: "Festa das Colheitas", hebrewName: "Shavuot", date: "2026-05-22" },
+    { name: "Dia de Luto", hebrewName: "Tish'a B'Av", date: "2026-07-23" },
+    { name: "Ano Novo Judaico", hebrewName: "Rosh Hashaná", date: "2026-09-12" },
+    { name: "Dia do Perdão", hebrewName: "Yom Kipur", date: "2026-09-21" },
+    { name: "Festa das Cabanas", hebrewName: "Sukkot", date: "2026-09-26" },
+    { name: "Alegria da Torá", hebrewName: "Simchat Torá", date: "2026-10-04" },
+    { name: "Festival das Luzes", hebrewName: "Chanukah", date: "2026-12-05" },
 ];
 
 export default function AgendaScreen({ navigation }) {
@@ -84,15 +91,17 @@ export default function AgendaScreen({ navigation }) {
     }
     try {
       setLoading(true);
-      const [guestResp, hostResp] = await Promise.all([
+      const [guestResp, hostMatchesResp, hostEventsResp] = await Promise.all([
         getMatchesForGuest(user.id),
-        getMatchesForHost(user.id)
+        getMatchesForHost(user.id),
+        getEventsByHost(user.id) // 👈 Busca todos os eventos criados pelo usuário
       ]);
 
       const guestMatches = guestResp.data || [];
-      const hostMatches = hostResp.data || [];
+      const hostMatches = hostMatchesResp.data || [];
+      const hostedEvents = hostEventsResp.data || [];
 
-      // 👇 Processa eventos onde sou CONVIDADO (Filtro Robusto)
+      // 1. Processa eventos onde sou CONVIDADO (Apenas 'accepted')
       const guestCommitments = guestMatches
         .filter(match => match.event && match.status?.toLowerCase() === "accepted")
         .map(match => ({
@@ -110,41 +119,37 @@ export default function AgendaScreen({ navigation }) {
           location: match.event.approximate_address || 'Local a definir'
         }));
 
-      // 👇 Processa eventos onde sou ANFITRIÃO
-      const hostEventsMap = new Map();
-      
-      hostMatches.forEach(match => {
-        if (!match.event) return;
+      // 2. Processa eventos onde sou ANFITRIÃO (Todos os criados aparecem agora)
+      const hostCommitments = hostedEvents.map(event => {
+        // Filtra os pedidos aceitos para este evento específico para contar as pessoas
+        const eventMatches = hostMatches.filter(m => 
+            String(m.event_id) === String(event.id) && 
+            m.status?.toLowerCase() === 'accepted'
+        );
         
-        if (!hostEventsMap.has(match.event.id)) {
-          hostEventsMap.set(match.event.id, {
-            id: match.event.id,
+        const totalPeople = eventMatches.reduce((acc, m) => {
+            return acc + 1 + (m.dependent_ids ? m.dependent_ids.length : 0);
+        }, 0);
+
+        return {
+            id: event.id,
             matchId: null,
-            title: match.event.title,
-            hebrewTitle: match.event.hebrew_title || "",
-            transliteration: match.event.transliteration || "",
-            date: toDateString(match.event.date),
-            fullDate: match.event.date,
+            title: event.title,
+            hebrewTitle: event.hebrew_title || "",
+            transliteration: event.transliteration || "",
+            date: toDateString(event.date),
+            fullDate: event.date,
             isJewishEvent: false,
             isShabbatEvent: true,
             role: 'host',
-            peopleCount: 0, // Começa em 0 para somar apenas confirmados
-            location: match.event.full_address || match.event.approximate_address || 'Local a definir'
-          });
-        }
-        
-        // 🚨 CORREÇÃO: Apenas soma se o status for exatamente 'accepted' (case-insensitive)
-        if (match.status?.toLowerCase() === 'accepted') {
-           const current = hostEventsMap.get(match.event.id);
-           current.peopleCount += 1 + (match.dependent_ids ? match.dependent_ids.length : 0);
-        }
+            peopleCount: totalPeople,
+            location: event.full_address || event.approximate_address || 'Sua Casa'
+        };
       });
 
-      const hostCommitments = Array.from(hostEventsMap.values());
-
-      // Processa Feriados Judaicos
+      // 3. Processa Feriados Judaicos
       const jewishCommitments = jewishEvents.map(ev => ({
-        id: ev.date + "-jewish",
+        id: ev.date + "-jewish-" + ev.hebrewName,
         title: ev.name,
         hebrewTitle: ev.hebrewName,
         transliteration: "",
@@ -162,6 +167,7 @@ export default function AgendaScreen({ navigation }) {
         ...jewishCommitments
       ];
 
+      // Remove duplicatas por ID (caso um evento apareça em mais de uma lista)
       const uniqueCommitments = Array.from(
         new Map(allCommitments.map(item => [item.id, item])).values()
       );
@@ -178,12 +184,12 @@ export default function AgendaScreen({ navigation }) {
       setUpcomingEvents(upcoming);
 
     } catch (error) {
-      console.error(error);
-      toast({ type: "error", title: "Não foi possível carregar a agenda." });
+      console.error("Erro AgendaScreen:", error);
+      toast({ type: "error", title: "Erro ao carregar agenda." });
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -216,7 +222,8 @@ export default function AgendaScreen({ navigation }) {
           onDayPress={(day) => setSelectedDate(day.dateString)}
           theme={{
             arrowColor: "#4F46E5",
-            todayTextColor: "#7C3AED"
+            todayTextColor: "#7C3AED",
+            calendarBackground: 'white'
           }}
           dayComponent={({ date, state }) => {
             const gDay = date.day;
@@ -258,7 +265,7 @@ export default function AgendaScreen({ navigation }) {
                       <View style={{ width: 10, height: 2, backgroundColor: '#FBBF24', borderRadius: 1 }} />
                     )}
                     {hasShabbat && (
-                      <View style={{ width: 10, height: 2, backgroundColor: '#3B82F6', borderRadius: 1 }} />
+                      <View style={{ width: 10, height: 2, backgroundColor: circleColor === 'transparent' ? '#3B82F6' : '#FFF', borderRadius: 1 }} />
                     )}
                   </View>
                 )}
@@ -331,9 +338,7 @@ export default function AgendaScreen({ navigation }) {
           <View style={styles.upcomingSection}>
             <Text style={styles.listHeader}>Próximos Compromissos</Text>
             
-            {loading ? (
-                <ActivityIndicator size="small" />
-            ) : upcomingEvents.length > 0 ? (
+            {upcomingEvents.length > 0 ? (
                 upcomingEvents.map((item) => {
                     const dateObj = new Date(item.fullDate);
                     const month = dateObj.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
@@ -380,15 +385,15 @@ export default function AgendaScreen({ navigation }) {
                                         <Text style={styles.metaTextNew} numberOfLines={1}>{item.location}</Text>
                                     </View>
                                 </View>
-                                {item.peopleCount > 0 && (
-                                    <View style={styles.eventMetaRowNew}>
-                                        <View style={styles.metaItemNew}>
-                                            <Icon name="account-group-outline" size={14} color="#6B7280" />
-                                            {/* 👇 Mostra apenas pessoas aceitas graças ao filtro robusto na lógica de busca 👇 */}
-                                            <Text style={styles.metaTextNew}>{item.peopleCount} pessoas confirmadas</Text>
-                                        </View>
+                                
+                                <View style={styles.eventMetaRowNew}>
+                                    <View style={styles.metaItemNew}>
+                                        <Icon name="account-group-outline" size={14} color="#6B7280" />
+                                        <Text style={styles.metaTextNew}>
+                                            {item.peopleCount} {item.peopleCount === 1 ? 'pessoa confirmada' : 'pessoas confirmadas'}
+                                        </Text>
                                     </View>
-                                )}
+                                </View>
                                 
                                 {coincidingHoliday && (
                                     <View style={[styles.eventMetaRowNew, { marginTop: 4 }]}>
@@ -405,7 +410,7 @@ export default function AgendaScreen({ navigation }) {
                     </TouchableOpacity>
                 )})
             ) : (
-                <Text style={styles.emptyText}>Você não tem eventos futuros agendados.</Text>
+                !loading && <Text style={styles.emptyText}>Você não tem eventos futuros agendados.</Text>
             )}
           </View>
         </View>
@@ -438,7 +443,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: 'white',
     borderRadius: 12,
-    marginBottom: 8, 
+    marginBottom: 12, 
     overflow: 'hidden',
     elevation: 2,
     shadowColor: '#000', 
@@ -447,14 +452,14 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   leftColumn: {
-    paddingVertical: 10, 
-    paddingHorizontal: 8,
+    paddingVertical: 12, 
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 80, 
+    width: 90, 
   },
   monthText: { color: 'white', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
-  dayText: { color: 'white', fontSize: 24, fontWeight: 'bold', marginVertical: 2 },
+  dayText: { color: 'white', fontSize: 28, fontWeight: 'bold', marginVertical: 0 },
   separator: { height: 1, width: '60%', backgroundColor: 'rgba(255, 255, 255, 0.4)', marginVertical: 4 },
   weekdayText: { color: 'white', fontSize: 12, fontWeight: '500' },
   timeText: { color: 'white', fontSize: 12, fontWeight: '500', marginTop: 1 },

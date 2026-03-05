@@ -154,6 +154,11 @@ export const getEventById = (eventId) => api.get(`/events/${eventId}`, noCacheCo
 export const createEvent = (eventData) => api.post('/events', eventData);
 
 /**
+ * Exclui um evento do sistema
+ */
+export const deleteEvent = (eventId) => api.delete(`/events/${eventId}`); // 👈 Nova função adicionada
+
+/**
  * Busca todos os eventos criados por um anfitrião específico.
  */
 export const getEventsByHost = (hostId) => 
