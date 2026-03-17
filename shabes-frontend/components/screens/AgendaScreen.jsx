@@ -14,11 +14,11 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { Card } from "../ui/Card";
 import { useAuth } from "../../context/AuthContext";
-import { getMatchesForGuest, getMatchesForHost, getEventsByHost } from "../../services/api"; // 👈 Adicionado getEventsByHost
+import { getMatchesForGuest, getMatchesForHost, getEventsByHost } from "../../services/api"; 
 import { toast } from "../../hooks/use-toast";
 import Icon from "../ui/Icon"; 
 
-import { HDate } from "@hebcal/core";
+import { HDate, months } from "@hebcal/core"; // 👈 Importado months para tradução
 
 // Configuração de idioma pt-br
 LocaleConfig.locales["pt-br"] = {
@@ -32,14 +32,18 @@ LocaleConfig.locales["pt-br"] = {
 };
 LocaleConfig.defaultLocale = "pt-br";
 
-// --- CORES DE IDENTIDADE ---
+// 👇 CONFIGURAÇÃO PESSACH 2026 👇
+const PESSACH_DAYS = ['2026-04-01', '2026-04-02', '2026-04-03', '2026-04-07', '2026-04-08', '2026-04-09'];
+const GOLD_COLOR = "#D4AF37";
+
 const ROLE_COLORS = {
-    host: '#7C3AED', // Roxo para Anfitrião
-    guest: '#3B82F6', // Azul para Convidado
-    holiday: '#F59E0B' // Dourado para Feriados
+    host: '#7C3AED', 
+    guest: '#3B82F6', 
+    holiday: '#F59E0B' 
 };
 
 // --- FUNÇÕES DE FORMATAÇÃO ---
+
 const toDateString = (date) => {
   const localDate = new Date(date);
   const year = localDate.getFullYear();
@@ -56,15 +60,41 @@ const getJewishDay = (date) => {
   }
 };
 
-// Datas judaicas 2026
+// 👇 NOVA FUNÇÃO: BUSCAR MÊS HEBRAICO DO CABEÇALHO 👇
+const getHebrewMonthLabel = (date) => {
+  try {
+    const d = new Date(date);
+    // Pegamos o dia 1 e o dia 28 do mês gregoriano para ver se o mês hebraico muda
+    const startH = new HDate(new Date(d.getFullYear(), d.getMonth(), 1));
+    const endH = new HDate(new Date(d.getFullYear(), d.getMonth(), 28));
+    
+    const m1 = startH.getMonthName();
+    const m2 = endH.getMonthName();
+
+    const translate = (m) => {
+      const map = {
+        'Nisan': 'Nissan', 'Iyyar': 'Iyar', 'Sivan': 'Sivan', 'Tamuz': 'Tammuz',
+        'Av': 'Av', 'Elul': 'Elul', 'Tishrei': 'Tishrei', 'Cheshvan': 'Cheshvan',
+        'Kislev': 'Kislev', 'Tevet': 'Tevet', 'Shevat': 'Shevat', 'Adar': 'Adar',
+        'Adar I': 'Adar I', 'Adar II': 'Adar II'
+      };
+      return map[m] || m;
+    };
+
+    return m1 === m2 ? translate(m1) : `${translate(m1)} / ${translate(m2)}`;
+  } catch {
+    return "";
+  }
+};
+
 const jewishEvents = [
-    { name: "Ano Novo Judaico", hebrewName: "Rosh Hashaná", date: "2025-09-22" },
-    { name: "Dia do Perdão", hebrewName: "Yom Kipur", date: "2025-10-01" },
+    { name: "Chagim", hebrewName: "Rosh Hashaná", date: "2025-09-22" },
+    { name: "Chagim", hebrewName: "Yom Kipur", date: "2025-10-01" },
     { name: "Festa das Cabanas", hebrewName: "Sukkot", date: "2025-10-06" },
     { name: "Alegria da Torá", hebrewName: "Simchat Torá", date: "2025-10-13" },
     { name: "Festival das Luzes", hebrewName: "Chanukah", date: "2025-12-27" },
     { name: "Festa das Sortes", hebrewName: "Purim", date: "2026-03-03" },
-    { name: "Páscoa Judaica", hebrewName: "Pesach", date: "2026-04-02" },
+    { name: "Chagim", hebrewName: "Pessach", date: "2026-04-02" },
     { name: "Dia da Independência", hebrewName: "Yom HaAtzma'ut", date: "2026-04-22" },
     { name: "Festa das Colheitas", hebrewName: "Shavuot", date: "2026-05-22" },
     { name: "Dia de Luto", hebrewName: "Tish'a B'Av", date: "2026-07-23" },
@@ -94,69 +124,74 @@ export default function AgendaScreen({ navigation }) {
       const [guestResp, hostMatchesResp, hostEventsResp] = await Promise.all([
         getMatchesForGuest(user.id),
         getMatchesForHost(user.id),
-        getEventsByHost(user.id) // 👈 Busca todos os eventos criados pelo usuário
+        getEventsByHost(user.id) 
       ]);
 
       const guestMatches = guestResp.data || [];
       const hostMatches = hostMatchesResp.data || [];
       const hostedEvents = hostEventsResp.data || [];
 
-      // 1. Processa eventos onde sou CONVIDADO (Apenas 'accepted')
       const guestCommitments = guestMatches
         .filter(match => match.event && match.status?.toLowerCase() === "accepted")
-        .map(match => ({
-          id: match.event.id,
-          matchId: match.id, 
-          title: match.event.title,
-          hebrewTitle: match.event.hebrew_title || "",
-          transliteration: match.event.transliteration || "",
-          date: toDateString(match.event.date),
-          fullDate: match.event.date,
-          isJewishEvent: false,
-          isShabbatEvent: true,
-          role: 'guest',
-          peopleCount: 1 + (match.dependent_ids ? match.dependent_ids.length : 0),
-          location: match.event.approximate_address || 'Local a definir'
-        }));
-
-      // 2. Processa eventos onde sou ANFITRIÃO (Todos os criados aparecem agora)
-      const hostCommitments = hostedEvents.map(event => {
-        // Filtra os pedidos aceitos para este evento específico para contar as pessoas
-        const eventMatches = hostMatches.filter(m => 
-            String(m.event_id) === String(event.id) && 
-            m.status?.toLowerCase() === 'accepted'
-        );
-        
-        const totalPeople = eventMatches.reduce((acc, m) => {
-            return acc + 1 + (m.dependent_ids ? m.dependent_ids.length : 0);
-        }, 0);
-
-        return {
-            id: event.id,
-            matchId: null,
-            title: event.title,
-            hebrewTitle: event.hebrew_title || "",
-            transliteration: event.transliteration || "",
-            date: toDateString(event.date),
-            fullDate: event.date,
+        .map(match => {
+          const dateStr = toDateString(match.event.date);
+          return {
+            id: match.event.id,
+            matchId: match.id, 
+            title: match.event.title,
+            hebrewTitle: match.event.hebrew_title || "",
+            transliteration: match.event.transliteration || "",
+            date: dateStr,
+            fullDate: match.event.date,
             isJewishEvent: false,
-            isShabbatEvent: true,
-            role: 'host',
-            peopleCount: totalPeople,
-            location: event.full_address || event.approximate_address || 'Sua Casa'
-        };
-      });
+            isShabbatEvent: !PESSACH_DAYS.includes(dateStr),
+            isPessachEvent: PESSACH_DAYS.includes(dateStr),
+            role: 'guest',
+            peopleCount: 1 + (match.dependent_ids ? match.dependent_ids.length : 0),
+            location: match.event.approximate_address || 'Local a definir'
+          };
+        });
 
-      // 3. Processa Feriados Judaicos
+      const hostCommitments = hostedEvents
+        .filter(event => String(event.host_id) === String(user.id))
+        .map(event => {
+          const dateStr = toDateString(event.date);
+          const eventMatches = hostMatches.filter(m => 
+              String(m.event_id) === String(event.id) && 
+              m.status?.toLowerCase() === 'accepted'
+          );
+          
+          const totalPeople = eventMatches.reduce((acc, m) => {
+              return acc + 1 + (m.dependent_ids ? m.dependent_ids.length : 0);
+          }, 0);
+
+          return {
+              id: event.id,
+              matchId: null,
+              title: event.title,
+              hebrewTitle: event.hebrew_title || "",
+              transliteration: event.transliteration || "",
+              date: dateStr,
+              fullDate: event.date,
+              isJewishEvent: false,
+              isShabbatEvent: !PESSACH_DAYS.includes(dateStr),
+              isPessachEvent: PESSACH_DAYS.includes(dateStr),
+              role: 'host',
+              peopleCount: totalPeople,
+              location: event.full_address || event.approximate_address || 'Sua Casa'
+          };
+        });
+
       const jewishCommitments = jewishEvents.map(ev => ({
         id: ev.date + "-jewish-" + ev.hebrewName,
-        title: ev.name,
         hebrewTitle: ev.hebrewName,
         transliteration: "",
         date: ev.date,
         fullDate: ev.date,
         isJewishEvent: true,
         isShabbatEvent: false,
+        isPessachEvent: false,
+        role: 'holiday',
         peopleCount: 0,
         location: ''
       }));
@@ -167,7 +202,6 @@ export default function AgendaScreen({ navigation }) {
         ...jewishCommitments
       ];
 
-      // Remove duplicatas por ID (caso um evento apareça em mais de uma lista)
       const uniqueCommitments = Array.from(
         new Map(allCommitments.map(item => [item.id, item])).values()
       );
@@ -212,33 +246,59 @@ export default function AgendaScreen({ navigation }) {
         <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
           <Icon name="chevron-left" size={28} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Minha Agenda</Text>
+        <Text style={styles.headerTitle}>Agenda</Text>
         <View style={{width:40}}/>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardDismissMode="on-drag">
         <Calendar
           current={today}
           onDayPress={(day) => setSelectedDate(day.dateString)}
+          enableSwipeMonths={true}
+          // 👇 NOVO: CABEÇALHO PERSONALIZADO COM MÊS HEBRAICO 👇
+          renderHeader={(date) => {
+            const headerDate = new Date(date);
+            const monthGrego = LocaleConfig.locales["pt-br"].monthNames[headerDate.getMonth()];
+            const year = headerDate.getFullYear();
+            const monthHebreu = getHebrewMonthLabel(headerDate);
+            return (
+              <View style={styles.calendarHeaderContainer}>
+                <Text style={styles.calendarTitleGrego}>{`${monthGrego} ${year}`}</Text>
+                <Text style={styles.calendarTitleHebreu}>{monthHebreu}</Text>
+              </View>
+            );
+          }}
           theme={{
             arrowColor: "#4F46E5",
             todayTextColor: "#7C3AED",
-            calendarBackground: 'white'
+            calendarBackground: 'white',
+            textMonthFontWeight: 'bold', // Estilo base
           }}
           dayComponent={({ date, state }) => {
-            const gDay = date.day;
-            const jDay = getJewishDay(date.dateString);
             const events = groupedEvents[date.dateString] || [];
-            
             const hasJewish = events.some(ev => ev.isJewishEvent);
-            const hasShabbat = events.some(ev => ev.isShabbatEvent); 
+            const hasConfirmed = events.some(ev => !ev.isJewishEvent);
+            const isPessachDate = PESSACH_DAYS.includes(date.dateString);
             
             const isSelected = selectedDate === date.dateString;
             const isToday = date.dateString === today;
 
-            const circleColor = isToday ? '#7C3AED' : isSelected ? '#3B82F6' : 'transparent';
-            const gDayColor = isToday || isSelected ? '#FFF' : state==='disabled'?'#D1D5DB':'#111827';
-            const jDayColor = isToday || isSelected ? '#FFF' : state==='disabled'?'#D1D5DB':'#6B7280';
+            const dayOfWeek = new Date(date.dateString + 'T00:00:00').getDay();
+            const isNormalDay = isPessachDate || dayOfWeek === 5 || dayOfWeek === 6;
+
+            const circleColor = isToday ? '#7C3AED' : isSelected ? (isPessachDate ? GOLD_COLOR : '#3B82F6') : 'transparent';
+            
+            const dayTextColor = (isToday || isSelected) 
+              ? '#FFF' 
+              : (state === 'disabled' || !isNormalDay) 
+                ? '#D1D5DB' 
+                : '#111827';
+
+            const jDayColor = (isToday || isSelected) 
+              ? '#FFF' 
+              : (state === 'disabled' || !isNormalDay) 
+                ? '#E5E7EB' 
+                : '#6B7280';
 
             return (
               <TouchableOpacity
@@ -249,24 +309,13 @@ export default function AgendaScreen({ navigation }) {
                 onPress={()=>setSelectedDate(date.dateString)}
                 disabled={state === 'disabled'}
               >
-                <Text style={{fontSize:16, fontWeight:'600', color:gDayColor}}>{gDay}</Text>
-                <Text style={{fontSize:10, color:jDayColor, marginTop:2}}>{jDay}</Text>
+                <Text style={{fontSize:16, fontWeight:'600', color:dayTextColor}}>{date.day}</Text>
+                <Text style={{fontSize:10, color: jDayColor, marginTop:2}}>{getJewishDay(date.dateString)}</Text>
                 
-                {(hasJewish || hasShabbat) && (
-                  <View style={{
-                    position: 'absolute',
-                    bottom: 5,
-                    flexDirection: 'row',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}>
-                    {hasJewish && (
-                      <View style={{ width: 10, height: 2, backgroundColor: '#FBBF24', borderRadius: 1 }} />
-                    )}
-                    {hasShabbat && (
-                      <View style={{ width: 10, height: 2, backgroundColor: circleColor === 'transparent' ? '#3B82F6' : '#FFF', borderRadius: 1 }} />
-                    )}
+                {(hasJewish || hasConfirmed) && (
+                  <View style={{ position: 'absolute', bottom: 5, flexDirection: 'row', gap: 4 }}>
+                    {hasJewish && <View style={{ width: 10, height: 2, backgroundColor: '#FBBF24', borderRadius: 1 }} />}
+                    {hasConfirmed && <View style={{ width: 10, height: 2, backgroundColor: isPessachDate ? GOLD_COLOR : (circleColor === 'transparent' ? '#3B82F6' : '#FFF'), borderRadius: 1 }} />}
                   </View>
                 )}
               </TouchableOpacity>
@@ -282,44 +331,37 @@ export default function AgendaScreen({ navigation }) {
           ) : displayEventsForSelectedDay.length > 0 ? (
             displayEventsForSelectedDay.map((item) => {
                 const isHoliday = item.isJewishEvent;
-                const boxColor = isHoliday ? ROLE_COLORS.holiday : (item.role === 'host' ? ROLE_COLORS.host : ROLE_COLORS.guest);
-                const titleColor = isHoliday ? '#D97706' : '#1F2937';
+                const isPessach = item.isPessachEvent;
+                const boxColor = isPessach ? GOLD_COLOR : (isHoliday ? ROLE_COLORS.holiday : (item.role === 'host' ? ROLE_COLORS.host : ROLE_COLORS.guest));
                 
+                const titleColor = isPessach ? GOLD_COLOR : (isHoliday ? '#D97706' : '#1F2937');
                 const mainTitle = isHoliday ? item.hebrewTitle : item.title;
-                const subTitle = isHoliday ? item.title : (new Date(item.fullDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + item.location);
-                const iconName = isHoliday ? "star" : (item.role === 'host' ? "home-account" : "calendar-check");
-                const iconColor = isHoliday ? "#D97706" : (item.role === 'host' ? "#7C3AED" : "#3B82F6");
+                const subTitle = isHoliday ? null : (new Date(item.fullDate).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + item.location);
+                
+                const iconName = isPessach ? "star" : (isHoliday ? "star" : (item.role === 'host' ? "home-account" : "calendar-check"));
+                const iconColor = isPessach ? GOLD_COLOR : (isHoliday ? "#D97706" : (item.role === 'host' ? "#7C3AED" : "#3B82F6"));
 
                 return (
                   <TouchableOpacity 
                     key={item.id} 
                     activeOpacity={isHoliday ? 1 : 0.8}
                     disabled={isHoliday} 
-                    onPress={() => {
-                        if (!isHoliday) {
-                            navigation.navigate("EventDetail", { 
-                                eventId: item.id, 
-                                matchId: item.matchId, 
-                                origin: 'agenda' 
-                            });
-                        }
-                    }}
+                    onPress={() => !isHoliday && navigation.navigate("EventDetail", { eventId: item.id, matchId: item.matchId, origin: 'agenda' })}
                   >
                     <Card style={[
                         styles.itemCard, 
-                        { borderLeftWidth: 4, borderLeftColor: boxColor }
+                        { borderLeftWidth: 4, borderLeftColor: boxColor },
+                        isPessach && { borderColor: GOLD_COLOR, borderWidth: 1 }
                     ]}>
                         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
                             <View style={{flex: 1, paddingRight: 8}}>
                                 <Text style={[styles.itemTitle, { color: titleColor }]} numberOfLines={1}>
                                   {mainTitle}
                                 </Text>
-                                <Text style={{ color: '#6B7280', fontSize: 14 }}>
-                                  {subTitle}
-                                </Text>
+                                {subTitle && <Text style={{ color: '#6B7280', fontSize: 14 }}>{subTitle}</Text>}
                                 {!isHoliday && (
                                     <Text style={{ fontSize: 10, color: boxColor, marginTop: 4, fontWeight: 'bold' }}>
-                                        {item.role === 'host' ? 'ANFITRIÃO' : 'CONVIDADO'}
+                                        {isPessach ? "PESSACH " : ""}{item.role === 'host' ? 'ANFITRIÃO' : 'CONVIDADO'}
                                     </Text>
                                 )}
                             </View>
@@ -340,42 +382,35 @@ export default function AgendaScreen({ navigation }) {
             
             {upcomingEvents.length > 0 ? (
                 upcomingEvents.map((item) => {
+                    const isPessach = item.isPessachEvent;
                     const dateObj = new Date(item.fullDate);
                     const month = dateObj.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
-                    const day = dateObj.getDate();
                     const weekday = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
                     const formattedWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-                    const time = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                    const mealLabel = dateObj.getDay() === 5 ? "Jantar" : dateObj.getDay() === 6 ? "Almoço" : "";
 
-                    const coincidingHoliday = jewishEvents.find(je => je.date === item.date);
-                    const dateBoxColor = item.role === 'host' ? ROLE_COLORS.host : ROLE_COLORS.guest;
+                    const dateBoxColor = isPessach ? GOLD_COLOR : (item.role === 'host' ? ROLE_COLORS.host : ROLE_COLORS.guest);
 
                     return (
                     <TouchableOpacity 
                         key={`upcoming-${item.id}`} 
                         activeOpacity={0.8}
-                        onPress={() => {
-                            navigation.navigate("EventDetail", { 
-                              eventId: item.id, 
-                              matchId: item.matchId, 
-                              origin: 'agenda' 
-                            });
-                        }}
+                        onPress={() => navigation.navigate("EventDetail", { eventId: item.id, matchId: item.matchId, origin: 'agenda' })}
                     >
-                        <View style={styles.upcomingCardNew}>
+                        <View style={[styles.upcomingCardNew, isPessach && { borderColor: GOLD_COLOR, borderWidth: 1 }]}>
                             <View style={[styles.leftColumn, { backgroundColor: dateBoxColor }]}> 
                                 <Text style={styles.monthText}>{month}</Text>
-                                <Text style={styles.dayText}>{day}</Text>
+                                <Text style={styles.dayText}>{dateObj.getDate()}</Text>
                                 <View style={styles.separator} />
                                 <Text style={styles.weekdayText}>{formattedWeekday}</Text>
-                                <Text style={styles.timeText}>{time}</Text>
+                                <Text style={styles.timeText}>{mealLabel}</Text>
                             </View>
 
                             <View style={styles.rightColumn}>
                                 <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                                    <Text style={styles.upcomingTitleNew} numberOfLines={1}>{item.title}</Text>
+                                    <Text style={[styles.upcomingTitleNew, isPessach && { color: GOLD_COLOR }]} numberOfLines={1}>{item.title}</Text>
                                     <Text style={{ fontSize: 10, color: dateBoxColor, fontWeight: 'bold' }}>
-                                        {item.role === 'host' ? 'ANFITRIÃO' : 'CONVIDADO'}
+                                        {isPessach ? "PESSACH " : ""}{item.role === 'host' ? 'ANFITRIÃO' : 'CONVIDADO'}
                                     </Text>
                                 </View>
 
@@ -388,23 +423,12 @@ export default function AgendaScreen({ navigation }) {
                                 
                                 <View style={styles.eventMetaRowNew}>
                                     <View style={styles.metaItemNew}>
-                                        <Icon name="account-group-outline" size={14} color="#6B7280" />
-                                        <Text style={styles.metaTextNew}>
+                                        <Icon name={isPessach ? "star" : "account-group-outline"} size={14} color={isPessach ? GOLD_COLOR : "#6B7280"} />
+                                        <Text style={[styles.metaTextNew, isPessach && { color: GOLD_COLOR, fontWeight: '600' }]}>
                                             {item.peopleCount} {item.peopleCount === 1 ? 'pessoa confirmada' : 'pessoas confirmadas'}
                                         </Text>
                                     </View>
                                 </View>
-                                
-                                {coincidingHoliday && (
-                                    <View style={[styles.eventMetaRowNew, { marginTop: 4 }]}>
-                                        <View style={styles.metaItemNew}>
-                                            <Icon name="star" size={14} color="#D97706" />
-                                            <Text style={[styles.metaTextNew, { color: '#D97706', fontWeight: '600' }]}>
-                                                {coincidingHoliday.hebrewName}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )}
                             </View>
                         </View>
                     </TouchableOpacity>
@@ -432,6 +456,22 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '600' },
   iconButton: { padding: 8, marginLeft: -8 },
   scrollContainer: { flexGrow: 1 },
+  // 👇 ESTILOS DO NOVO CABEÇALHO 👇
+  calendarHeaderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarTitleGrego: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  calendarTitleHebreu: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
   listContainer: { paddingHorizontal: 16, paddingBottom: 32 },
   listHeader: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, marginTop: 24, color: '#1F2937' },
   itemCard: { padding: 16, marginBottom: 12, backgroundColor: 'white' },

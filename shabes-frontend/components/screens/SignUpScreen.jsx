@@ -201,6 +201,7 @@ export default function SignUpScreen({ navigation, route }) {
             key={option} 
             style={[styles.chip, selectedValue === option && styles.chipSelected]}
             onPress={() => onSelect(option)}
+            keyboardDismissMode="on-drag"
           >
             <Text style={[styles.chipText, selectedValue === option && styles.chipTextSelected]}>
               {option}
@@ -214,7 +215,7 @@ export default function SignUpScreen({ navigation, route }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.headerContainer}>
              <TouchableOpacity onPress={() => navigation.goBack()}><Icon name="arrow-left" size={24} color="#374151" /></TouchableOpacity>
              <Text style={styles.title}>Criar Conta</Text>

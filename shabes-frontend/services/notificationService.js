@@ -4,11 +4,9 @@ import Constants from 'expo-constants';
 
 /**
  * Configuração de comportamento das notificações em primeiro plano (Foreground)
- * Atualizado para ELIMINAR o aviso de depreciação do shouldShowAlert.
  */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    // Substituído shouldShowAlert pelos novos padrões para evitar avisos
     shouldShowBanner: true, 
     shouldShowList: true,   
     shouldPlaySound: true,
@@ -18,23 +16,18 @@ Notifications.setNotificationHandler({
 
 /**
  * Envia uma notificação Push para outro utilizador via Expo API (Notificação Remota)
- * Reforçado com parâmetros de prioridade e logs de diagnóstico detalhados.
  */
 export async function sendPushNotification(targetExpoToken, title, body, data = {}) {
-  // 1. Validação rigorosa do Token
   if (!targetExpoToken || typeof targetExpoToken !== 'string') {
-    console.error("[PUSH] Erro: Token de destino ausente ou no formato incorreto.");
+    console.error("[PUSH] Erro: Token de destino ausente.");
     return;
   }
 
   if (!targetExpoToken.startsWith('ExponentPushToken')) {
-    console.error("[PUSH] Erro: O token fornecido não é um token válido do Expo (deve começar com ExponentPushToken).");
+    console.error("[PUSH] Erro: Token inválido.");
     return;
   }
 
-  console.log(`[PUSH] Iniciando envio remoto para o destinatário: ${targetExpoToken}`);
-
-  // 2. Construção do Payload otimizado
   const message = {
     to: targetExpoToken,
     sound: 'default',
@@ -62,43 +55,43 @@ export async function sendPushNotification(targetExpoToken, title, body, data = 
     });
 
     const resData = await response.json();
-    
     if (response.ok) {
-      console.log(`[PUSH] Sucesso: Mensagem aceita pelo Expo. ID: ${resData.data?.id}`);
-      if (resData.data?.status === 'error') {
-        console.error(`[PUSH] Erro no ticket de entrega do Expo: ${resData.data.message}`);
-      }
-    } else {
-      console.error("[PUSH] O servidor do Expo rejeitou a requisição:", JSON.stringify(resData));
+      console.log(`[PUSH] Sucesso ID: ${resData.data?.id}`);
     }
   } catch (error) {
-    console.error("[PUSH] Erro de rede ou falha na API do Expo:", error);
+    console.error("[PUSH] Erro de rede:", error);
   }
 }
 
 /**
  * Atalho para notificar anfitrião sobre novo interesse
+ * 👇 ATUALIZADO: Agora aceita eventId para redirecionamento 👇
  */
-export async function notifyHostOfNewInterest(hostToken, guestName, eventTitle) {
+export async function notifyHostOfNewInterest(hostToken, guestName, eventTitle, eventId) {
   return sendPushNotification(
     hostToken,
     "Novo interesse no evento! 🕯️",
     `${guestName} se interessou pelo seu evento: ${eventTitle}`,
-    { type: 'NEW_INTEREST' }
+    { type: 'NEW_INTEREST', eventId: eventId } // 👈 Passando ID para o clique
   );
 }
 
 /**
  * Atalho para notificar convidado sobre decisão do anfitrião
+ * 👇 ATUALIZADO: Agora aceita eventId para redirecionamento 👇
  */
-export async function notifyGuestOfMatchAction(guestToken, eventTitle, status) {
+export async function notifyGuestOfMatchAction(guestToken, eventTitle, status, eventId) {
   const isAccepted = status === 'accepted' || status === 'ACCEPTED';
   const title = isAccepted ? "Pedido Aceito! ✨" : "Pedido Recusado";
   const body = isAccepted 
     ? `Sua participação no evento "${eventTitle}" foi confirmada!` 
     : `Infelizmente seu pedido para "${eventTitle}" não foi aceito desta vez.`;
   
-  return sendPushNotification(guestToken, title, body, { type: 'MATCH_RESPONSE', status });
+  return sendPushNotification(guestToken, title, body, { 
+    type: 'MATCH_RESPONSE', 
+    status, 
+    eventId: eventId // 👈 Passando ID para o clique
+  });
 }
 
 /**
@@ -128,10 +121,7 @@ export async function registerForPushNotificationsAsync() {
       finalStatus = status;
     }
     
-    if (finalStatus !== 'granted') {
-      console.warn('[PUSH] Permissão negada pelo utilizador.');
-      return null;
-    }
+    if (finalStatus !== 'granted') return null;
 
     try {
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? 
@@ -142,8 +132,6 @@ export async function registerForPushNotificationsAsync() {
     } catch (e) {
       console.error("[PUSH] Falha ao gerar token:", e);
     }
-  } else {
-    console.warn('[PUSH] Necessário dispositivo físico para notificações remotas.');
   }
 
   return token;
@@ -151,8 +139,9 @@ export async function registerForPushNotificationsAsync() {
 
 /**
  * Dispara uma notificação local
+ * 👇 ATUALIZADO: Agora aceita o parâmetro data para Deep Linking 👇
  */
-export async function showLocalNotification(title, body) {
+export async function showLocalNotification(title, body, data = {}) {
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -161,6 +150,7 @@ export async function showLocalNotification(title, body) {
         color: '#4F46E5',
         sound: 'default',
         priority: Notifications.AndroidNotificationPriority.HIGH,
+        data: data, // 👈 Importante: contém o eventId para o clique funcionar
       },
       trigger: null,
     });

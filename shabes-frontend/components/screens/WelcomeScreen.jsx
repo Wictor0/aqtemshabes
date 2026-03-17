@@ -68,6 +68,7 @@ export default function WelcomeScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
           scrollEnabled={true} // 👈 Scroll agora está livre
           showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
         >
           {/* TouchableWithoutFeedback aqui dentro garante que o clique fora 
              feche o teclado sem travar o movimento de subida e descida.

@@ -30,11 +30,20 @@ import Icon from "../ui/Icon";
 
 // Hooks, API & Utils
 import { toast } from "../../hooks/use-toast";
-import { createEvent, getMatchesForGuest } from "../../services/api";
+import { createEvent, getMatchesForGuest, saveInternalNotification } from "../../services/api"; 
 import { useAuth } from "../../context/AuthContext";
 import { showLocalNotification } from "../../services/notificationService";
 
-// Listas de Opções
+// 👇 CONFIGURAÇÃO PESSACH 2026 👇
+const PESSACH_CONFIG = {
+  '2026-04-01': { label: 'Pessach (Seder I)', meals: ['jantar'] },
+  '2026-04-02': { label: 'Pessach (Seder II)', meals: ['almoço', 'jantar'] },
+  '2026-04-03': { label: 'Pessach', meals: ['almoço'] },
+  '2026-04-07': { label: 'Pessach (Final)', meals: ['jantar'] },
+  '2026-04-08': { label: 'Pessach (Final)', meals: ['almoço', 'jantar'] },
+  '2026-04-09': { label: 'Pessach (Encerramento)', meals: ['almoço'] },
+};
+
 const AUDIENCE_OPTIONS = [
   { id: "any", label: "Qualquer pessoa" },
   { id: "families", label: "Famílias" },
@@ -60,7 +69,6 @@ export default function CreateEventScreen({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
-  // --- LÓGICA DE ESTADO INICIAL ---
   const getInitialValidDate = () => {
     const d = new Date();
     d.setHours(0, 0, 0, 0); 
@@ -73,6 +81,10 @@ export default function CreateEventScreen({ navigation }) {
   };
 
   const getMealTypeForDate = (date) => {
+    const dateKey = date.toISOString().split('T')[0];
+    if (PESSACH_CONFIG[dateKey]) {
+      return PESSACH_CONFIG[dateKey].meals[0]; 
+    }
     const day = date.getDay();
     return day === 6 ? 'almoço' : 'jantar'; 
   };
@@ -97,6 +109,8 @@ export default function CreateEventScreen({ navigation }) {
   };
 
   const [formData, setFormData] = useState(getInitialFormData());
+
+  const currentPessach = PESSACH_CONFIG[formData.date.toISOString().split('T')[0]];
 
   useEffect(() => {
     const fetchGuestStatus = async () => {
@@ -143,9 +157,12 @@ export default function CreateEventScreen({ navigation }) {
     if (Platform.OS === "android") setShowDatePicker(false);
     
     if (selectedDate) {
+      const dateKey = selectedDate.toISOString().split('T')[0];
+      const pessachInfo = PESSACH_CONFIG[dateKey];
       const day = selectedDate.getDay();
-      if (day !== 5 && day !== 6) {
-        Alert.alert("Data Inválida", "Escolha Sexta ou Sábado.");
+
+      if (!pessachInfo && day !== 5 && day !== 6) {
+        Alert.alert("Data Inválida", "Escolha Sexta, Sábado ou uma data de Pessach.");
         return;
       }
 
@@ -154,10 +171,12 @@ export default function CreateEventScreen({ navigation }) {
       newDeadline.setDate(newDeadline.getDate() - 1);
       newDeadline.setHours(12, 0, 0, 0);
 
+      let autoMeal = pessachInfo ? pessachInfo.meals[0] : (day === 6 ? 'almoço' : 'jantar');
+
       setFormData(prev => ({
         ...prev,
         date: selectedDate,
-        mealType: day === 6 ? 'almoço' : 'jantar',
+        mealType: autoMeal,
         deadline: newDeadline
       }));
     }
@@ -204,9 +223,12 @@ export default function CreateEventScreen({ navigation }) {
   };
 
   const handleSubmit = async () => {
+    const dateKey = formData.date.toISOString().split('T')[0];
+    const isPessachDate = !!PESSACH_CONFIG[dateKey];
     const dayOfWeek = formData.date.getDay();
-    if (dayOfWeek !== 5 && dayOfWeek !== 6) {
-      return toast({ type: "error", title: "Data Inválida", description: "Escolha uma Sexta ou Sábado." });
+
+    if (!isPessachDate && dayOfWeek !== 5 && dayOfWeek !== 6) {
+      return toast({ type: "error", title: "Data Inválida", description: "Escolha um dia de Pessach ou final de semana." });
     }
 
     const selectedDateString = formData.date.toISOString().split('T')[0];
@@ -234,11 +256,24 @@ export default function CreateEventScreen({ navigation }) {
         host_id: user.id,
       };
 
-      await createEvent(eventPayload);
+      const response = await createEvent(eventPayload);
+      const newEventId = response?.data?.id || (Array.isArray(response?.data) ? response?.data[0]?.id : null);
+
+      const notiTitle = isPessachDate ? "Celebração de Pessach! 🍷" : "Evento Criado! 🕯️";
+      const notiMsg = isPessachDate 
+        ? `Sua mesa de Pessach "${formData.title}" foi publicada.` 
+        : `Seu Shabat "${formData.title}" foi publicado com sucesso.`;
+
+      await saveInternalNotification(user.id, notiTitle, notiMsg, "event_created", newEventId);
       
       setFormData(getInitialFormData());
 
-      await showLocalNotification("AquiTemShabes", `Evento ${formData.title} criado`);
+      await showLocalNotification(
+        "AquiTemShabes", 
+        `Evento ${formData.title} criado`, 
+        { eventId: newEventId }
+      );
+
       toast({ type: "success", title: "Evento criado com sucesso!" });
       navigation.goBack();
     } catch (error) {
@@ -252,17 +287,22 @@ export default function CreateEventScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.contentWrapper}>
-            <Card style={{ width: "100%", marginBottom: 20 }}>
+            <Card style={[
+                { width: "100%", marginBottom: 20 },
+                currentPessach && { borderColor: "#D4AF37", borderWidth: 2 } 
+            ]}>
               <CardHeader>
-                <CardTitle>Informações do Evento</CardTitle>
-                <CardDescription>Detalhes principais e data.</CardDescription>
+                <CardTitle>{currentPessach ? "Pessach 2026" : "Informações do Evento"}</CardTitle>
+                <CardDescription>
+                  {currentPessach ? `Organize seu seder de Pessach` : "Detalhes principais e data."}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <View style={styles.formSection}>
                   <Label>Título do Evento</Label>
-                  <Input value={formData.title} onChangeText={(v) => handleInputChange("title", v)} placeholder="Ex: Shabat Familiar" />
+                  <Input value={formData.title} onChangeText={(v) => handleInputChange("title", v)} placeholder="Ex: Seder de Pessach" />
                 </View>
 
                 <View style={styles.formSection}>
@@ -271,11 +311,14 @@ export default function CreateEventScreen({ navigation }) {
                 </View>
 
                 <View style={styles.formSection}>
-                  <Label>Data do Evento</Label>
+                  <Label>Data</Label>
                   <View style={styles.relativeContainer}>
-                    <View style={styles.dateButton}>
-                      <Icon name="calendar-month" size={24} color="#374151" />
-                      <Text style={styles.dateButtonText}>{formData.date.toLocaleDateString("pt-BR")}</Text>
+                    <View style={[styles.dateButton, currentPessach && { backgroundColor: '#FFFDF0', borderColor: '#D4AF37' }]}>
+                      {/* 👇 ÍCONE ALTERADO PARA estrela de davi 👇 */}
+                      <Icon name={currentPessach ? "star-david" : "calendar-month"} size={24} color={currentPessach ? "#D4AF37" : "#374151"} />
+                      <Text style={[styles.dateButtonText, currentPessach && { color: '#D4AF37', fontWeight: 'bold' }]}>
+                        {formData.date.toLocaleDateString("pt-BR")}
+                      </Text>
                     </View>
                     {Platform.OS === "ios" ? (
                       <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} locale="pt-BR" style={styles.iosPickerNative} />
@@ -286,11 +329,37 @@ export default function CreateEventScreen({ navigation }) {
                        <DateTimePicker value={formData.date} mode="date" display="default" onChange={onDateChange} minimumDate={new Date()} />
                     )}
                   </View>
-                  <View style={styles.autoMealContainer}>
-                    <Icon name={formData.mealType === 'jantar' ? "weather-night" : "weather-sunny"} size={16} color="#4F46E5" />
-                    <Text style={styles.autoMealText}>{formData.date.getDay() === 5 ? "Sexta-feira | Jantar" : "Sábado | Almoço"}</Text>
+                  
+                  <View style={[styles.autoMealContainer, currentPessach && { backgroundColor: '#FFFDF0' }]}>
+                    <Icon 
+                      name={formData.mealType === 'jantar' ? "weather-night" : "weather-sunny"} 
+                      size={16} 
+                      color={currentPessach ? "#D4AF37" : "#4F46E5"} 
+                    />
+                    <Text style={[styles.autoMealText, currentPessach && { color: '#D4AF37' }]}>
+                      {currentPessach ? currentPessach.label : (formData.date.getDay() === 5 ? "Sexta-feira | Jantar" : "Sábado | Almoço")}
+                    </Text>
                   </View>
                 </View>
+
+                {currentPessach && currentPessach.meals.length > 1 && (
+                  <View style={styles.formSection}>
+                    <Label>Escolha o Turno</Label>
+                    <View style={styles.chipsContainer}>
+                      {currentPessach.meals.map((m) => (
+                        <TouchableOpacity 
+                          key={m} 
+                          style={[styles.chip, formData.mealType === m && { backgroundColor: '#D4AF37', borderColor: '#D4AF37' }]} 
+                          onPress={() => handleInputChange("mealType", m)}
+                        >
+                          <Text style={[styles.chipText, formData.mealType === m && { color: '#FFF' }]}>
+                            {m === 'almoço' ? "Almoço (Dia)" : "Jantar (Noite)"}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
 
                 <View style={styles.formSection}>
                   <Label>Data Limite para Inscrições</Label>
@@ -334,7 +403,6 @@ export default function CreateEventScreen({ navigation }) {
                   </View>
                 </View>
 
-                {/* 👇 NOVA SEÇÃO DE IDIOMAS ADICIONADA AQUI 👇 */}
                 <View style={[styles.formSection, { marginTop: 8 }]}>
                   <Label>Idiomas Falados</Label>
                   <View style={styles.chipsContainer}>
@@ -369,8 +437,8 @@ export default function CreateEventScreen({ navigation }) {
             </Card>
 
             <View style={{ width: "100%", marginTop: 20 }}>
-              <Button onPress={handleSubmit} disabled={isLoading} variant="host" style={styles.submitButton}>
-                {isLoading ? <LoadingSpinner size="small" color="#FFFFFF" /> : <Text style={styles.submitButtonText}>Criar Evento</Text>}
+              <Button onPress={handleSubmit} disabled={isLoading} variant="host" style={[styles.submitButton, currentPessach && { backgroundColor: '#D4AF37' }]}>
+                {isLoading ? <LoadingSpinner size="small" color="#FFFFFF" /> : <Text style={styles.submitButtonText}>Criar {currentPessach ? "Seder de Pessach" : "Evento"}</Text>}
               </Button>
             </View>
           </View>

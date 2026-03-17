@@ -23,9 +23,6 @@ const noCacheConfig = {
 
 // --- FUNÇÕES AUXILIARES ---
 
-/**
- * Converte um URI local (file://) em string Base64 real para envio ao servidor
- */
 const uriToBase64 = async (uri) => {
   try {
     const response = await fetch(uri);
@@ -42,24 +39,13 @@ const uriToBase64 = async (uri) => {
   }
 };
 
-/**
- * Gera um username automático baseado no primeiro e último nome com ESPAÇO
- */
 const generateUsername = (fullName) => {
   if (!fullName) return "";
-  
-  const normalized = fullName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  
+  const normalized = fullName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const parts = normalized.trim().split(/\s+/).map(p => p.replace(/[^a-z0-9]/g, ""));
-  
   if (parts.length === 0) return "";
-  
   const first = parts[0];
   const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  
   return last ? `${first} ${last}` : first;
 };
 
@@ -83,24 +69,12 @@ api.interceptors.request.use(
 // --- FUNÇÕES DE API ---
 // ==========================================
 
-/**
- * Realiza o login do utilizador
- */
 export const login = (email, password) => api.post('/auth/login', { email, password });
-
-/**
- * Reenvia o e-mail de verificação caso o utilizador não o tenha recebido
- */
 export const resendVerificationEmail = (email) => api.post('/auth/resend-verification', { email });
 
-/**
- * Cadastro Robusto: Processa Avatar, Foto de Rosto, Restrições e Username
- */
 export const signUp = async (userData) => {
   let finalData = { ...userData };
-  
   if (!finalData.metadata) finalData.metadata = {};
-
   const fullName = finalData.name || finalData.metadata.full_name;
   if (fullName) {
     const generated = generateUsername(fullName);
@@ -108,7 +82,6 @@ export const signUp = async (userData) => {
     finalData.metadata.username = generated;
     finalData.metadata.full_name = fullName;
   }
-
   const avatarUri = finalData.image || finalData.avatar_url || (finalData.metadata && finalData.metadata.image);
   if (avatarUri && typeof avatarUri === 'string' && avatarUri.startsWith('file://')) {
     try {
@@ -116,29 +89,15 @@ export const signUp = async (userData) => {
       finalData.avatar_url = base64Avatar;
       finalData.metadata.avatar_url = base64Avatar;
       delete finalData.image;
-    } catch (err) {
-      console.error("[API] Falha ao processar Avatar:", err);
-    }
+    } catch (err) { console.error("[API] Erro Avatar:", err); }
   }
-
   const facePhotoUri = finalData.face_photo_url;
   if (facePhotoUri && typeof facePhotoUri === 'string' && facePhotoUri.startsWith('file://')) {
     try {
       const base64Face = await uriToBase64(facePhotoUri);
       finalData.face_photo_url = base64Face;
-    } catch (err) {
-      console.error("[API] Falha ao processar Foto de Rosto:", err);
-    }
+    } catch (err) { console.error("[API] Erro Foto Rosto:", err); }
   }
-
-  if (finalData.dietaryRestrictions) {
-    finalData.metadata.dietaryRestrictions = finalData.dietaryRestrictions;
-  }
-  
-  if (finalData.validatorOrganization) {
-    finalData.metadata.validatorOrganization = finalData.validatorOrganization;
-  }
-
   return api.post('/auth/signup', finalData);
 };
 
@@ -152,17 +111,8 @@ export const getHostHistory = (hostId) => api.get(`/profile/${hostId}/history`, 
 export const getEvents = () => api.get('/events', noCacheConfig);
 export const getEventById = (eventId) => api.get(`/events/${eventId}`, noCacheConfig);
 export const createEvent = (eventData) => api.post('/events', eventData);
-
-/**
- * Exclui um evento do sistema
- */
-export const deleteEvent = (eventId) => api.delete(`/events/${eventId}`); // 👈 Nova função adicionada
-
-/**
- * Busca todos os eventos criados por um anfitrião específico.
- */
-export const getEventsByHost = (hostId) => 
-  api.get(`/events?host_id=${hostId}`, noCacheConfig);
+export const deleteEvent = (eventId) => api.delete(`/events/${eventId}`);
+export const getEventsByHost = (hostId) => api.get(`/events?host_id=${hostId}`, noCacheConfig);
 
 // --- Matches ---
 export const createMatch = (matchData) => api.post('/matches', matchData);
@@ -170,38 +120,75 @@ export const getMatchById = (matchId) => api.get(`/matches?id=${matchId}`, noCac
 export const updateMatchStatus = (matchId, status) => api.patch(`/matches/${matchId}`, { status });
 
 /**
- * Busca todos os convidados ACEITOS de um evento
+ * 👇 IMPORTANTE: Certifique-se que o Backend Render inclui o push_token do convidado nesta rota 👇
  */
 export const getAcceptedGuestsByEvent = (eventId) => 
   api.get(`/matches?event_id=${eventId}&status=accepted`, noCacheConfig);
 
-/**
- * Envia uma avaliação para um match específico
- */
 export const submitRating = (matchId, rating, rating_comment) => 
   api.patch(`/matches/${matchId}`, { rating, rating_comment });
 
-/**
- * Busca todos os matches vinculados ao usuário logado
- */
 export const getMyMatches = () => api.get('/matches', noCacheConfig);
-
-/**
- * Busca matches para convidados
- */
-export const getMatchesForGuest = (guestId) => 
-  api.get(`/matches?guest_id=${guestId}`, noCacheConfig);
-
-/**
- * Busca matches para anfitriões
- */
-export const getMatchesForHost = (hostId) => 
-  api.get(`/matches?host_id=${hostId}`, noCacheConfig);
+export const getMatchesForGuest = (guestId) => api.get(`/matches?guest_id=${guestId}`, noCacheConfig);
+export const getMatchesForHost = (hostId) => api.get(`/matches?host_id=${hostId}`, noCacheConfig);
 
 // --- Dependentes ---
 export const getDependents = () => api.get('/dependents', noCacheConfig);
 export const createDependent = (dependentData) => api.post('/dependents', dependentData);
 export const updateDependent = (dependentId, dependentData) => api.patch(`/dependents/${dependentId}`, dependentData);
 export const deleteDependent = (dependentId) => api.delete(`/dependents/${dependentId}`);
+
+// --- Notificações ---
+export const getNotifications = async (userId) => {
+  return supabase
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+};
+
+export const markAllNotificationsAsRead = async (userId) => {
+  return supabase
+    .from('notifications')
+    .update({ read: true, is_read: true }) 
+    .eq('user_id', userId)
+    .or('read.eq.false,is_read.eq.false');
+};
+
+/**
+ * Salva uma notificação no histórico do banco de dados.
+ * Suporta o mapeamento dinâmico para as colunas UUID do seu banco.
+ */
+export const saveInternalNotification = async (userId, title, message, type, relatedId = null) => {
+  try {
+    const payload = {
+      user_id: userId,
+      title: title,
+      message: message,
+      type: type,
+      read: false,    
+      is_read: false  
+    };
+
+    if (relatedId) {
+      // Diferencia entre IDs de pedidos e IDs de eventos gerais
+      if (type.includes('match')) {
+        payload.match_id = relatedId;
+      } else {
+        payload.event_id = relatedId;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([payload])
+      .select(); // Adicionado select para debug se necessário
+
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error("[API_ERROR] Falha ao salvar notificação:", err);
+  }
+};
 
 export default api;

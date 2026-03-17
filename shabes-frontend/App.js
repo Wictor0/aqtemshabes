@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { View, StyleSheet, Alert, Platform } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigation } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Toast from "react-native-toast-message";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -41,7 +41,6 @@ import PublicProfileScreen from "./components/screens/PublicProfileScreen";
 
 const Stack = createNativeStackNavigator();
 
-// Configuração de comportamento das notificações (Foreground)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -83,6 +82,7 @@ function AppStack() {
 
 function RootNavigator() {
   const { isAuthenticated, isLoading, user, signOut } = useAuth();
+  const navigation = useNavigation();
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [userStatus, setUserStatus] = useState(null); 
   
@@ -99,47 +99,42 @@ function RootNavigator() {
     configureNavBar();
   }, []);
 
-  /**
-   * GERENCIAMENTO GLOBAL DE NOTIFICAÇÕES E PERSISTÊNCIA DE TOKEN
-   */
   useEffect(() => {
-    // Agora gravamos o token assim que isAuthenticated e user existem, 
-    // independente de o status estar aprovado ou não, para garantir a captura imediata.
     if (isAuthenticated && user?.id) {
       
-      // 1. Registro do Push Token e Salvamento no Perfil do Usuário
       registerForPushNotificationsAsync().then(async (token) => {
         if (token) {
-          console.log("[AquiTemShabes] Push Token obtido:", token);
-          
           try {
-            // Atualiza a coluna push_token na tabela profiles do Supabase
-            const { error } = await supabase
+            await supabase
               .from('profiles')
               .update({ push_token: token })
               .eq('id', user.id);
-            
-            if (error) {
-                console.error("[AquiTemShabes] Erro ao gravar push_token no Supabase:", error);
-            } else {
-                console.log("[AquiTemShabes] Push Token sincronizado com sucesso.");
-            }
           } catch (err) {
-            console.error("[AquiTemShabes] Exceção ao salvar token:", err);
+            console.error("[AquiTemShabes] Erro ao sincronizar token.");
           }
         }
       });
 
-      // 2. Ouvintes de Notificação (Ativos apenas se estiver logado)
       notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-        console.log("[AquiTemShabes] Notificação em foreground:", notification.request.content.title);
+        console.log("[AquiTemShabes] Recebeu:", notification.request.content.title);
       });
 
       responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
         const { data } = response.notification.request.content;
-        console.log("[AquiTemShabes] Clique detectado:", data);
+        
+        if (data?.eventId || data?.matchId) {
+          navigation.navigate('EventDetail', { 
+            eventId: data.eventId,
+            matchId: data.matchId,
+            origin: 'notification' 
+          });
+        } 
+        else if (data?.type === 'GENERAL_NOTIFICATION') {
+          navigation.navigate('Notifications');
+        }
       });
 
+      // 👇 AQUI ESTAVA O ERRO. CORRIGIDO PARA USAR .remove() 👇
       return () => {
         if (notificationListener.current) {
           notificationListener.current.remove();
@@ -151,7 +146,6 @@ function RootNavigator() {
     }
   }, [isAuthenticated, user?.id]);
 
-  // Verificação de Status do Usuário
   useEffect(() => {
     const checkStatus = async () => {
       if (isAuthenticated && user) {
@@ -160,7 +154,6 @@ function RootNavigator() {
           const { data } = await getMyProfile();
           setUserStatus(data?.status || 'approved'); 
         } catch (error) {
-          console.error("Erro ao verificar status:", error);
           setUserStatus('error'); 
         } finally {
           setIsCheckingStatus(false);
@@ -172,7 +165,6 @@ function RootNavigator() {
     checkStatus();
   }, [isAuthenticated, user]);
 
-  // Realtime Monitor para Status do Perfil
   useEffect(() => {
     if (!user) return;
 
@@ -180,21 +172,12 @@ function RootNavigator() {
       .channel('profile_status_monitor')
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${user.id}`,
-        },
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
         (payload) => {
           const newStatus = payload.new.status;
           setUserStatus(newStatus);
           if (newStatus === 'rejected') {
-             Alert.alert(
-                 "Acesso Revogado", 
-                 "Sua conta não foi aprovada pelos administradores.",
-                 [{ text: "OK", onPress: () => signOut() }]
-             );
+             Alert.alert("Acesso Revogado", "Sua conta não foi aprovada.", [{ text: "OK", onPress: () => signOut() }]);
           }
         }
       )
@@ -217,7 +200,6 @@ function RootNavigator() {
     return <AuthStack />;
   }
 
-  // Roteamento baseado no Status
   if (userStatus === 'approved') {
     return <AppStack />;
   } else if (userStatus === 'rejected') {

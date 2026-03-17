@@ -11,7 +11,7 @@ import {
   Animated,
   Platform,
   RefreshControl,
-  TextInput // 👈 Adicionado para o novo seletor
+  TextInput 
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
@@ -23,17 +23,21 @@ import { Label } from "../ui/Label";
 import { Select } from "../ui/Select";
 import EventCard from "../cards/EventCard";
 import Icon from "@expo/vector-icons/Feather";
-import MaterialIcon from "@expo/vector-icons/MaterialCommunityIcons"; // 👈 Adicionado para os ícones de + e -
+import MaterialIcon from "@expo/vector-icons/MaterialCommunityIcons"; 
 
 // API functions and Hooks
 import { getEvents } from "../../services/api";
 import { toast } from "../../hooks/use-toast";
 
+// 👇 CONFIGURAÇÃO PESSACH 2026 👇
+const PESSACH_DAYS = ['2026-04-01', '2026-04-02', '2026-04-03', '2026-04-07', '2026-04-08', '2026-04-09'];
+const GOLD_COLOR = "#D4AF37";
+
 const ageGroupOptions = [
   { label: "Qualquer Faixa Etária", value: "" },
   { label: "Jovens", value: "young-adults" },
   { label: "Adultos", value: "adults" },
-  { label: "Seniores", value: "seniors" },
+  { label: "Seniores", value: "seniores" },
 ];
 
 const saoPauloNeighborhoods = [
@@ -45,7 +49,6 @@ const availableLanguages = [
   "Português", "Inglês", "Hebraico", "Iídiche", "Espanhol", "Outros"
 ];
 
-// --- Componente Auxiliar de Chip ---
 const FilterChip = ({ label, selected, onPress }) => (
   <TouchableOpacity
     onPress={() => onPress(label)}
@@ -60,8 +63,6 @@ const FilterChip = ({ label, selected, onPress }) => (
     ]}>{label}</Text>
   </TouchableOpacity>
 );
-
-// --- Lógica de Filtros ---
 
 const isSameDay = (date1, date2) => {
   if (!date1 || !date2) return false;
@@ -84,7 +85,6 @@ const isEventMatch = (event, filters) => {
     if (!eventMatchesRegion) return false;
   }
   if (filters.guestCount > 0) {
-    // Filtra eventos que suportam pelo menos a quantidade desejada
     if (event.max_guests !== 0 && event.max_guests < filters.guestCount) return false;
   }
   if (filters.ageGroup && filters.ageGroup !== "") {
@@ -117,7 +117,9 @@ export default function DiscoverEventsScreen({ navigation }) {
   
   const [activeFilters, setActiveFilters] = useState(null);
 
-  // Animação do Accordion de Filtros
+  // 👇 VERIFICA SE A DATA FILTRADA É PESSACH 👇
+  const isFilterDatePessach = filterInputs.date && PESSACH_DAYS.includes(filterInputs.date.toISOString().split('T')[0]);
+
   const [filtersOpen, setFiltersOpen] = useState(false);
   const animatedHeight = useRef(new Animated.Value(0)).current;
   const iconRotation = useRef(new Animated.Value(0)).current;
@@ -133,10 +135,8 @@ export default function DiscoverEventsScreen({ navigation }) {
   const heightInterpolate = animatedHeight.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] });
   const rotateInterpolate = iconRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] });
 
-  // Handlers de Filtros
   const handleFilterChange = (key, value) => setFilterInputs(prev => ({ ...prev, [key]: value }));
 
-  // --- Funções para o novo seletor numérico ---
   const handleGuestsTextChange = (text) => {
     const numericValue = text.replace(/[^0-9]/g, '');
     const finalValue = numericValue === '' ? 0 : parseInt(numericValue, 10);
@@ -234,9 +234,20 @@ export default function DiscoverEventsScreen({ navigation }) {
 
   const renderEvent = ({ item }) => {
     if (!item?.id) return null;
+    
+    // 👇 LOGICA DE IDENTIFICAÇÃO DE PESSACH NO CARD 👇
+    const eventDateStr = item.date ? item.date.split('T')[0] : "";
+    const isPessach = PESSACH_DAYS.includes(eventDateStr);
+
     return (
-        <TouchableOpacity onPress={() => navigation.navigate("EventDetail", { eventId: item.id })} style={{ marginBottom: 16 }}>
-            <EventCard event={item} />
+        <TouchableOpacity 
+          onPress={() => navigation.navigate("EventDetail", { eventId: item.id })} 
+          style={[
+            { marginBottom: 16 },
+            isPessach && { borderColor: GOLD_COLOR, borderWidth: 1.5, borderRadius: 14 } // 👇 BORDA DOURADA 👇
+          ]}
+        >
+            <EventCard event={item} isPessach={isPessach} />
         </TouchableOpacity>
     );
   };
@@ -248,12 +259,15 @@ export default function DiscoverEventsScreen({ navigation }) {
         refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#4F46E5"]} />
         }
+        keyboardDismissMode="on-drag"
       >
-        <Card style={styles.filterCard}>
+        <Card style={[styles.filterCard, activeFilters?.date && isFilterDatePessach && { borderColor: GOLD_COLOR }]}>
           <TouchableOpacity onPress={toggleFilters} style={styles.filterHeader}>
-            <Text style={styles.filterHeaderText}>Filtrar resultados</Text>
+            <Text style={[styles.filterHeaderText, isFilterDatePessach && { color: GOLD_COLOR }]}>
+              {isFilterDatePessach ? "Filtrar Pessach 🍷" : "Filtrar resultados"}
+            </Text>
             <Animated.View style={{ transform: [{ rotate: rotateInterpolate }] }}>
-              <Icon name="chevron-down" size={24} color="#374151" />
+              <Icon name="chevron-down" size={24} color={isFilterDatePessach ? GOLD_COLOR : "#374151"} />
             </Animated.View>
           </TouchableOpacity>
           
@@ -270,9 +284,12 @@ export default function DiscoverEventsScreen({ navigation }) {
               <Label>Data do Evento</Label>
               {Platform.OS === "android" && (
                 <>
-                  <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-                    <Icon name="calendar" size={20} color="#374151" />
-                    <Text style={styles.dateButtonText}>
+                  <TouchableOpacity 
+                    onPress={() => setShowDatePicker(true)} 
+                    style={[styles.dateButton, isFilterDatePessach && { borderColor: GOLD_COLOR, backgroundColor: '#FFFDF0' }]}
+                  >
+                    <Icon name={isFilterDatePessach ? "star" : "calendar"} size={20} color={isFilterDatePessach ? GOLD_COLOR : "#374151"} />
+                    <Text style={[styles.dateButtonText, isFilterDatePessach && { color: GOLD_COLOR, fontWeight: 'bold' }]}>
                       {filterInputs.date ? filterInputs.date.toLocaleDateString("pt-BR") : 'Qualquer Data'}
                     </Text>
                   </TouchableOpacity>
@@ -280,14 +297,14 @@ export default function DiscoverEventsScreen({ navigation }) {
                 </>
               )}
               {Platform.OS === "ios" && (
-                <View style={styles.iosPickerContainer}>
-                  <Icon name="calendar" size={20} color="#374151" />
+                <View style={[styles.iosPickerContainer, isFilterDatePessach && { backgroundColor: '#FFFDF0' }]}>
+                  <Icon name={isFilterDatePessach ? "star" : "calendar"} size={20} color={isFilterDatePessach ? GOLD_COLOR : "#374151"} />
                   <DateTimePicker value={filterInputs.date || new Date()} mode="date" display="default" onChange={(e, date) => date && handleFilterChange("date", date)} />
                 </View>
               )}
               {filterInputs.date && (
                 <Button variant="link" onPress={() => handleFilterChange('date', null)} style={{ alignSelf: 'flex-start' }}>
-                  <Text style={{color: '#4F46E5'}}>Limpar Data</Text>
+                  <Text style={{color: isFilterDatePessach ? GOLD_COLOR : '#4F46E5'}}>Limpar Data</Text>
                 </Button>
               )}
 
@@ -303,7 +320,6 @@ export default function DiscoverEventsScreen({ navigation }) {
                 ))}
               </View>
 
-              {/* 👇 NOVO SELETOR NUMÉRICO (STEPPER) APLICADO 👇 */}
               <Label>Vagas Necessárias</Label>
               <View style={styles.stepperContainer}>
                 <TouchableOpacity 
@@ -335,7 +351,6 @@ export default function DiscoverEventsScreen({ navigation }) {
               </View>
               <Text style={styles.helperText}>Mostrar apenas eventos com esta capacidade.</Text>
               
-              
               <Label>Idiomas Falados</Label>
               <View style={styles.chipsContainer}>
                 {availableLanguages.map((lang) => (
@@ -350,8 +365,12 @@ export default function DiscoverEventsScreen({ navigation }) {
               
               <View style={styles.buttonContainer}>
                 <Button variant="outline" onPress={clearFilters} style={{ flex: 1 }}><Text>Limpar</Text></Button>
-                <Button onPress={applyFilters} style={{ flex: 1 }} disabled={isFiltering}>
-                  {isFiltering ? <ActivityIndicator color="white" /> : <Text style={{ color: "white" }}>Buscar Eventos</Text>}
+                <Button 
+                  onPress={applyFilters} 
+                  style={[{ flex: 1 }, isFilterDatePessach && { backgroundColor: GOLD_COLOR }]} 
+                  disabled={isFiltering}
+                >
+                  {isFiltering ? <ActivityIndicator color="white" /> : <Text style={{ color: "white" }}>Buscar {isFilterDatePessach ? "Pessach" : "Eventos"}</Text>}
                 </Button>
               </View>
             </View>
@@ -406,9 +425,9 @@ const styles = StyleSheet.create({
   filterHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: "white", borderRadius: 8, zIndex: 1 },
   filterHeaderText: { fontSize: 16, fontWeight: "600", color: "#374151" },
   filtersContent: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 12, flexDirection: "column", gap: 12 },
-  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderColor: "#E5E7EB", borderRadius: 8, backgroundColor: "white", gap: 8 },
+  dateButton: { flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, backgroundColor: "white", gap: 8 },
   dateButtonText: { fontSize: 16, color: "#374151" },
-  iosPickerContainer: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 10, backgroundColor: "white" },
+  iosPickerContainer: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 10, backgroundColor: "white", borderRadius: 8, paddingVertical: 4 },
   buttonContainer: { flexDirection: "row", gap: 12, marginTop: 12 },
   chipsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
   chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, marginBottom: 4 },
@@ -417,15 +436,12 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 14, fontWeight: "500" },
   chipTextSelected: { color: "#FFFFFF" },
   chipTextUnselected: { color: "#374151" },
-  
-  // 👇 Novos estilos do Stepper 👇
   stepperContainer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4, width: '100%' },
   stepperButton: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: 'white', justifyContent: 'center', alignItems: 'center', elevation: 1 },
   stepperButtonDisabled: { backgroundColor: '#F3F4F6', borderColor: '#F3F4F6' },
   stepperValueBox: { flex: 1, height: 44, backgroundColor: 'white', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   stepperInput: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', textAlign: 'center', width: '100%', height: '100%' },
   helperText: { fontSize: 12, color: "#6B7280", marginTop: -4, marginBottom: 4 },
-
   resultsTitle: { fontSize: 20, fontWeight: "600", color: "#1F2937", marginBottom: 16 },
   subtitleText: { fontSize: 14, color: "#6B7280", marginBottom: 16, marginTop: -8 },
   emptyContainer: { alignItems: "center", padding: 32 },

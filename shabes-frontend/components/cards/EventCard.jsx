@@ -16,43 +16,27 @@ import VerifiedBadge from "../ui/VerifiedBadge";
  * Mapas Completos para tradução
  */
 const hostAgeGroupLabels = {
-  // Variações de Jovens
   "young-adults": "Jovens (18-35)",
   "young_adults": "Jovens (18-35)", 
   "Young Adults": "Jovens (18-35)",
-  
-  // Variações de Adultos
   "adults": "Adultos (35+)",
   "Adults": "Adultos (35+)",
-  
-  // Variações de Seniores
   "seniors": "Seniores (60+)",
   "Seniors": "Seniores (60+)",
-  
-  // Outros
   "mixed": "Misto",
   "Mixed": "Misto",
 };
 
 const targetAudienceLabels = {
-  // Variações de Qualquer pessoa
   "any": "Qualquer pessoa",
   "Any": "Qualquer pessoa",
-
-  // Variações de Famílias
   "families": "Famílias",
   "Families": "Famílias",
-
-  // Variações de Jovens
   "young-adults": "Jovens",
   "young_adults": "Jovens",
   "Young Adults": "Jovens",
-
-  // Variações de Adultos
   "adults": "Adultos",
   "Adults": "Adultos",
-
-  // Variações de Seniores
   "seniors": "Seniores",
   "Seniors": "Seniores",
 };
@@ -64,6 +48,9 @@ const MONTHS_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+
+// 👇 COR PADRÃO PESSACH 👇
+const GOLD_COLOR = "#D4AF37";
 
 function formatDateLongPT(dateString) {
   if (!dateString) return "";
@@ -79,6 +66,7 @@ export default function EventCard({
   event,
   onInterest,
   matchScore,
+  isPessach = false, // 👈 Recebido do DiscoverEventScreen
 }) {
   const [isInterested, setIsInterested] = useState(false);
   
@@ -89,20 +77,13 @@ export default function EventCard({
     onInterest?.(event.id);
   };
 
-
   const getLabel = (value, map) => {
     if (!value) return null;
-
     let key = value;
-
-    if (Array.isArray(value)) {
-        key = value[0];
-    }
-
+    if (Array.isArray(value)) { key = value[0]; }
     if (typeof key === 'string') {
         key = key.replace(/[\[\]"']/g, "").trim();
     }
-
     return map[key] || map[key.toLowerCase()] || key;
   };
 
@@ -117,14 +98,27 @@ export default function EventCard({
   const audienceLabel = getLabel(event.target_audience, targetAudienceLabels);
 
   const hostDisplayName = "Anfitrião da Comunidade";
-  const hostRole = null; 
 
   return (
-    <Card style={[styles.card, { borderLeftColor: "#3B82F6" }]}>
+    <Card style={[
+        styles.card, 
+        { borderLeftColor: isPessach ? GOLD_COLOR : "#3B82F6" },
+        isPessach && { borderColor: GOLD_COLOR, borderWidth: 1 } // 👇 BORDA DOURADA 👇
+    ]}>
       <CardHeader style={{ paddingBottom: 8 }}>
+        {/* 👇 BADGE SUPERIOR PESSACH 👇 */}
+        {isPessach && (
+            <View style={styles.pessachBadge}>
+                <Icon name="star" color="white" size={10} />
+                <Text style={styles.pessachBadgeText}>PESSACH 2026</Text>
+            </View>
+        )}
+
         <View style={styles.headerContainer}>
           <View style={{ flex: 1, paddingRight: 8 }}> 
-            <CardTitle style={styles.cardTitle} numberOfLines={2}>{event.title}</CardTitle>
+            <CardTitle style={[styles.cardTitle, isPessach && { color: GOLD_COLOR }]} numberOfLines={2}>
+                {event.title}
+            </CardTitle>
             
             <View style={styles.hostRow}>
                 <View style={styles.hostNameContainer}>
@@ -133,9 +127,9 @@ export default function EventCard({
                     </CardDescription>
                 </View>
             </View>
-            
           </View>
 
+          {/* Match Score mantido conforme original */}
           {typeof matchScore === "number" && (
             <View style={styles.matchScoreBadge}>
               <Icon name="star" color="#D97706" size={12} />
@@ -151,8 +145,9 @@ export default function EventCard({
         <View style={styles.infoSection}>
           {event.date && (
             <View style={styles.infoRow}>
-              <Icon name="calendar-month-outline" size={16} color="#6B7280" />
-              <Text style={styles.infoText}>
+              {/* 👇 TROCA DE ÍCONE PARA PESSACH 👇 */}
+              <Icon name={isPessach ? "star" : "calendar-month-outline"} size={16} color={isPessach ? GOLD_COLOR : "#6B7280"} />
+              <Text style={[styles.infoText, isPessach && { color: GOLD_COLOR, fontWeight: '700' }]}>
                 {formatDateLongPT(event.date)}
               </Text>
             </View>
@@ -174,8 +169,8 @@ export default function EventCard({
                   : "Sem limites de convidados"}
               </Text>
               {spotsLeft > 0 && (
-                <Badge variant="outline">
-                  {spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""}
+                <Badge variant="outline" style={isPessach && { borderColor: GOLD_COLOR }}>
+                  <Text style={isPessach && { color: GOLD_COLOR }}>{spotsLeft} vaga{spotsLeft !== 1 ? "s" : ""}</Text>
                 </Badge>
               )}
             </View>
@@ -205,13 +200,13 @@ export default function EventCard({
               onPress={handleInterest}
               disabled={isInterested || spotsLeft === 0}
               variant={isInterested ? "outline" : "default"}
-              style={{ flex: 1 }}
+              style={[{ flex: 1 }, isPessach && !isInterested && { backgroundColor: GOLD_COLOR }]}
             >
               {isInterested
                 ? "Interesse Enviado"
                 : spotsLeft === 0
                 ? "Esgotado"
-                : "Tenho Interesse"}
+                : `Tenho Interesse em Pessach`}
             </Button>
           </View>
         )}
@@ -222,12 +217,28 @@ export default function EventCard({
 
 const styles = StyleSheet.create({
   card: { borderLeftWidth: 4 },
+  pessachBadge: {
+    backgroundColor: GOLD_COLOR,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+    marginBottom: 8
+  },
+  pessachBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold'
+  },
   headerContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-  cardTitle: { fontSize: 18, lineHeight: 22 },
+  cardTitle: { fontSize: 18, lineHeight: 22, fontWeight: '700' },
   hostRow: {
     flexDirection: 'row',
     alignItems: 'center',

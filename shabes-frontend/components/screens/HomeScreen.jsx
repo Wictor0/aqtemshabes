@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
@@ -17,11 +18,10 @@ import { toast } from "../../hooks/use-toast";
 import MatchCard from "../cards/MatchCard";
 import Icon from "../ui/Icon";
 import LoadingSpinner from "../ui/LoadingSpinner";
-import { formatShabbatDate } from "../../lib/utils";
+import { formatShabbatDate, getNextShabbat } from "../../lib/utils";
 
 import CalendarIcon from "../../assets/icons/CalendarIcon";
 import IconGuest from "../../assets/icons/IconGuest";
-import IconHost from "../../assets/icons/IconHost";
 
 const EmptyStateWithButton = ({ message, buttonLabel, onPress }) => (
   <View style={{ alignItems: "center", gap: 12 }}>
@@ -39,16 +39,6 @@ const EmptyListComponent = ({ message }) => (
   </View>
 );
 
-const getNextShabbatDate = () => {
-  const today = new Date();
-  const currentDay = today.getDay();
-  const FRIDAY = 5;
-  const daysUntilFriday = (FRIDAY - currentDay + 7) % 7;
-  const nextShabbatDate = new Date();
-  nextShabbatDate.setDate(today.getDate() + daysUntilFriday);
-  return nextShabbatDate;
-};
-
 export default function HomeScreen({ navigation }) {
   const { user } = useAuth();
   
@@ -60,8 +50,9 @@ export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
 
   const [activeTab, setActiveTab] = useState(hasHostAccess ? 'host' : 'guest');
+  const [filterPriority, setFilterPriority] = useState('all'); 
 
-  const nextShabbat = getNextShabbatDate();
+  const todayDate = useMemo(() => new Date(), []);
 
   useEffect(() => {
     if (!hasHostAccess) {
@@ -92,35 +83,37 @@ export default function HomeScreen({ navigation }) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // 1. Processamento Convidado
       const filteredGuestMatches = (guestResponse?.data || []).filter(match => {
         if (!match.event || !match.event.date) return false;
-        return new Date(match.event.date) >= today;
+        const isFuture = new Date(match.event.date) >= today;
+        const isNotCancelled = match.status !== 'cancelled'; 
+        return isFuture && isNotCancelled;
       });
       setUserMatches(filteredGuestMatches);
       
-      // 2. Processamento Anfitrião
       if (hasHostAccess && hostEventsRes) {
           const allEvents = hostEventsRes.data || [];
           const allMatches = hostMatchesRes?.data || [];
 
           const myCreatedEvents = allEvents.filter(event => {
             if (!event.host_id || !user.id) return false;
-            const isOwner = String(event.host_id) === String(user.id);
-            const isUpcoming = new Date(event.date) >= today;
-            return isOwner && isUpcoming;
+            return String(event.host_id) === String(user.id) && new Date(event.date) >= today;
           });
 
           const hostDisplayItems = myCreatedEvents.map(event => {
               const eventMatches = allMatches.filter(m => String(m.event_id) === String(event.id));
               const pendingCount = eventMatches.filter(m => m.status === 'pending').length;
+              const acceptedCount = eventMatches.filter(m => m.status === 'accepted').length;
+              const declinedCount = eventMatches.filter(m => m.status === 'declined').length;
               
               return {
                   id: `event-group-${event.id}`,
                   event: event,
-                  status: pendingCount > 0 ? "pending" : "accepted", 
+                  status: pendingCount > 0 ? "pending" : (acceptedCount > 0 ? "accepted" : "declined"), 
                   isEventContainer: true,
                   pendingCount,
+                  acceptedCount,
+                  declinedCount,
                   totalMatches: eventMatches.length,
                   hostPhoto: user?.avatar_url,
                   ...(eventMatches[0] || { user: null }) 
@@ -131,58 +124,57 @@ export default function HomeScreen({ navigation }) {
       } else {
           setHostMatches([]);
       }
-
     } catch (error) {
-      console.error("Erro ao buscar matches na HomeScreen:", error);
+      console.error("Erro HomeScreen:", error);
     } finally {
       setLoading(false);
     }
   }, [user?.id, hasHostAccess]);
 
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      fetchMatches();
-    }, [fetchMatches])
-  );
+  useFocusEffect(useCallback(() => { fetchMatches(); }, [fetchMatches]));
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchMatches();
-    setRefreshing(false);
-  }, [fetchMatches]);
+  const handleRemoveDeclinedMatch = (matchId) => {
+    Alert.alert(
+      "Remover Pedido",
+      "Deseja ocultar este pedido recusado da sua tela inicial?",
+      [
+        { text: "Manter", style: "cancel" },
+        { 
+          text: "Remover", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              await updateMatchStatus(matchId, 'cancelled');
+              toast({ type: "success", title: "Pedido removido" });
+              fetchMatches();
+            } catch (error) {
+              toast({ type: "error", title: "Erro ao remover" });
+            }
+          }
+        }
+      ]
+    );
+  };
 
-  // 👇 LÓGICA DE ORDENAÇÃO ATUALIZADA 👇
   const sortMatches = (matches) => {
     return [...matches].sort((a, b) => {
-        // Verifica se é pendente (vale para match individual ou container de evento)
-        const aIsPending = a.status === 'pending' || (a.pendingCount && a.pendingCount > 0);
-        const bIsPending = b.status === 'pending' || (b.pendingCount && b.pendingCount > 0);
-
-        // Se 'a' é pendente e 'b' não é, 'a' sobe (-1)
-        if (aIsPending && !bIsPending) return -1;
-        // Se 'b' é pendente e 'a' não é, 'b' sobe (1)
-        if (!aIsPending && bIsPending) return 1;
-
-        // Se ambos são iguais no status, ordena pela data (mais próxima primeiro)
-        const dateA = new Date(a.event?.date || 0);
-        const dateB = new Date(b.event?.date || 0);
-        return dateA - dateB;
+        if (filterPriority !== 'all') {
+            const aIsPriority = a.status === filterPriority || (filterPriority === 'pending' && a.pendingCount > 0);
+            const bIsPriority = b.status === filterPriority || (filterPriority === 'pending' && b.pendingCount > 0);
+            if (aIsPriority && !bIsPriority) return -1;
+            if (!aIsPriority && bIsPriority) return 1;
+        } else {
+            const aIsPending = a.status === 'pending' || (a.pendingCount && a.pendingCount > 0);
+            const bIsPending = b.status === 'pending' || (b.pendingCount && b.pendingCount > 0);
+            if (aIsPending && !bIsPending) return -1;
+            if (!aIsPending && bIsPending) return 1;
+        }
+        return new Date(a.event?.date || 0) - new Date(b.event?.date || 0);
     });
   };
 
-  const sortedUserMatches = useMemo(() => sortMatches(userMatches), [userMatches]);
-  const sortedHostMatches = useMemo(() => sortMatches(hostMatches), [hostMatches]);
-
-  const guestCounts = {
-    pending: userMatches.filter((m) => m.status === "pending").length,
-    accepted: userMatches.filter((m) => m.status === "accepted").length,
-  };
-
-  const hostCounts = {
-    pending: hostMatches.filter((m) => m.pendingCount > 0).length,
-    totalEvents: hostMatches.length,
-  };
+  const sortedUserMatches = useMemo(() => sortMatches(userMatches), [userMatches, filterPriority]);
+  const sortedHostMatches = useMemo(() => sortMatches(hostMatches), [hostMatches, filterPriority]);
 
   const findNextAcceptedEvent = () => {
     const acceptedGuestMatches = userMatches.filter(m => m.status === 'accepted' && m.event);
@@ -198,121 +190,118 @@ export default function HomeScreen({ navigation }) {
 
   const nextEventDate = findNextAcceptedEvent();
 
+  const renderFilterPills = () => (
+    <View style={styles.pillsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'all' && styles.pillActiveAll]} onPress={() => setFilterPriority('all')}>
+                <Text style={[styles.pillText, filterPriority === 'all' && styles.pillTextActive]}>Todos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'pending' && styles.pillActivePending]} onPress={() => setFilterPriority('pending')}>
+                <View style={[styles.statusDot, { backgroundColor: '#F59E0B' }]} />
+                <Text style={[styles.pillText, filterPriority === 'pending' && styles.pillTextActive]}>Pendentes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'accepted' && styles.pillActiveAccepted]} onPress={() => setFilterPriority('accepted')}>
+                <View style={[styles.statusDot, { backgroundColor: '#22C55E' }]} />
+                <Text style={[styles.pillText, filterPriority === 'accepted' && styles.pillTextActive]}>Aceitos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'declined' && styles.pillActiveDeclined]} onPress={() => setFilterPriority('declined')}>
+                <View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} />
+                <Text style={[styles.pillText, filterPriority === 'declined' && styles.pillTextActive]}>Recusados</Text>
+            </TouchableOpacity>
+        </ScrollView>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchMatches} />}
+        keyboardDismissMode="on-drag"
       >
         <View style={styles.contentWrapper}>
           <TouchableOpacity onPress={() => navigation.navigate("Agenda")}>
             <LinearGradient colors={["#4F46E5", "#7C3AED"]} style={styles.shabbatCard}>
               <View>
-                <Text style={styles.shabbatTitle}>Agenda</Text>
-                <Text style={styles.shabbatDate}>{formatShabbatDate(nextShabbat)}</Text>
+                <Text style={styles.shabbatTitle}>Próximo Evento</Text>
                 {nextEventDate && (
-                  <Text style={styles.nextEventDate}>
-                    Próximo evento: {formatShabbatDate(nextEventDate)}
-                  </Text>
+                  <Text style={styles.nextEventDate}>{formatShabbatDate(nextEventDate)}</Text>
                 )}
               </View>
               <CalendarIcon size={32} color="rgba(255,255,255,0.5)" />
             </LinearGradient>
           </TouchableOpacity>
 
-          {loading && !refreshing ? (
-            <View style={styles.loadingContainer}>
-              <LoadingSpinner size="large" />
-            </View>
-          ) : (
+          {!loading || refreshing ? (
             <View>
               <View style={styles.customTabContainer}>
                 <TouchableOpacity
-                  onPress={() => setActiveTab("guest")}
+                  onPress={() => { setActiveTab("guest"); setFilterPriority('all'); }}
                   style={[styles.tabButton, activeTab === "guest" ? styles.guestButtonActive : styles.buttonInactive]}
-                  activeOpacity={0.9}
                 >
-                  <View style={styles.iconCircle}>
-                    <IconGuest width={24} height={24} color="#3B82F6" />
-                  </View>
+                  <View style={styles.iconCircle}><IconGuest width={24} height={24} color="#3B82F6" /></View>
                   <View style={styles.tabContentContainer}>
                     <Text style={[styles.tabTitle, activeTab === "guest" ? styles.textActive : styles.textInactive]}>Convidado</Text>
                     <Text style={[styles.tabStats, activeTab === "guest" ? styles.textActive : styles.textInactive]}>
-                      {guestCounts.pending} Pendentes / {guestCounts.accepted} Aceitos
+                      {userMatches.filter(m => m.status === "pending").length} Pendentes / {userMatches.filter(m => m.status === "accepted").length} Aceitos
                     </Text>
                   </View>
                 </TouchableOpacity>
 
                 {hasHostAccess && (
-                    <TouchableOpacity
-                      onPress={() => setActiveTab("host")}
-                      style={[styles.tabButton, activeTab === "host" ? styles.hostButtonActive : styles.buttonInactive]}
-                      activeOpacity={0.9}
-                    >
-                    <View style={styles.iconCircle}>
-                        <IconHost width={24} height={24} color="#7C3AED" />
-                    </View>
+                  <TouchableOpacity
+                    onPress={() => { setActiveTab("host"); setFilterPriority('all'); }}
+                    style={[styles.tabButton, activeTab === "host" ? styles.hostButtonActive : styles.buttonInactive]}
+                  >
+                    <View style={styles.iconCircle}><Icon name="home-account" size={30} color="#7C3AED" /></View>
                     <View style={styles.tabContentContainer}>
-                        <Text style={[styles.tabTitle, activeTab === "host" ? styles.textActive : styles.textInactive]}>Anfitrião</Text>
-                        <Text style={[styles.tabStats, activeTab === "host" ? styles.textActive : styles.textInactive]}>
-                           {hostCounts.totalEvents} Eventos / {hostCounts.pending} com Pedidos
-                        </Text>
+                      <Text style={[styles.tabTitle, activeTab === "host" ? styles.textActive : styles.textInactive]}>Anfitrião</Text>
+                      <Text style={[styles.tabStats, activeTab === "host" ? styles.textActive : styles.textInactive]}>
+                        {hostMatches.length} Eventos / {hostMatches.filter(m => m.pendingCount > 0).length} com Pedidos
+                      </Text>
                     </View>
-                    </TouchableOpacity>
+                  </TouchableOpacity>
                 )}
               </View>
 
+              {renderFilterPills()}
+
               <View style={styles.listContainer}>
-                {activeTab === "guest" ? (
-                  sortedUserMatches.length > 0 ? (
-                    sortedUserMatches.map((match) => (
-                      match.event?.id && (
-                        <TouchableOpacity
-                          key={match.id}
-                          onPress={() => navigation.navigate("EventDetail", { eventId: match.event.id, matchId: match.id, origin: "home" })}
-                        >
-                          <MatchCard match={match} isHost={false} />
-                        </TouchableOpacity>
-                      )
-                    ))
-                  ) : (
-                    <EmptyStateWithButton
-                      message="Você ainda não enviou nenhum pedido para eventos futuros."
-                      buttonLabel="Descobrir novos eventos"
-                      onPress={() => navigation.navigate("DiscoverEvents")}
-                    />
-                  )
-                ) : (
-                  sortedHostMatches.length > 0 ? (
-                    sortedHostMatches.map((item) => (
-                      item.event?.id && (
-                        <TouchableOpacity
-                          key={item.id}
-                          onPress={() => navigation.navigate("EventDetail", { 
-                              eventId: item.event.id, 
-                              origin: "home",
-                              hasRequests: item.totalMatches > 0 
-                          })}
-                        >
-                          <MatchCard
-                            match={item}
-                            isHost={true}
-                            showBadge={item.pendingCount > 0}
-                            badgeCount={item.pendingCount}
-                          />
-                        </TouchableOpacity>
-                      )
-                    ))
-                  ) : (
-                    <EmptyStateWithButton
-                      message="Você ainda não criou eventos para o futuro."
-                      buttonLabel="Criar um novo evento"
-                      onPress={() => navigation.navigate("CreateEvent")}
-                    />
-                  )
+                {(activeTab === "guest" ? sortedUserMatches : sortedHostMatches).map((item) => (
+                  <View key={item.id} style={styles.cardWrapper}> 
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate("EventDetail", { 
+                        eventId: item.event.id, 
+                        matchId: activeTab === 'guest' ? item.id : null,
+                        origin: "home" 
+                      })}
+                      style={{ flex: 1 }}
+                    >
+                      <MatchCard match={item} isHost={activeTab === 'host'} />
+                    </TouchableOpacity>
+
+                    {/* 👇 "X" DISCRETO NO TOPO 👇 */}
+                    {activeTab === 'guest' && item.status === 'declined' && (
+                      <TouchableOpacity 
+                        style={styles.removeButton} 
+                        onPress={() => handleRemoveDeclinedMatch(item.id)}
+                      >
+                        <Icon name="close" size={20} color="#9CA3AF" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+                {(activeTab === "guest" ? sortedUserMatches : sortedHostMatches).length === 0 && (
+                  <EmptyStateWithButton 
+                    message={activeTab === "guest" ? "Nenhum pedido enviado." : "Nenhum evento criado."} 
+                    buttonLabel={activeTab === "guest" ? "Descobrir eventos" : "Criar evento"}
+                    onPress={() => navigation.navigate(activeTab === "guest" ? "DiscoverEvents" : "CreateEvent")}
+                  />
                 )}
               </View>
             </View>
+          ) : (
+            <View style={styles.loadingContainer}><LoadingSpinner size="large" /></View>
           )}
         </View>
       </ScrollView>
@@ -326,10 +315,9 @@ const styles = StyleSheet.create({
   contentWrapper: { paddingHorizontal: 16, width: "100%", maxWidth: 700, alignSelf: 'center', gap: 24 },
   shabbatCard: { padding: 20, borderRadius: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   shabbatTitle: { fontSize: 18, fontWeight: "600", color: "white" },
-  shabbatDate: { color: "rgba(255,255,255,0.8)" },
   nextEventDate: { color: "rgba(255,255,255,0.9)", fontSize: 12, fontWeight: '600', marginTop: 4, fontStyle: 'italic' },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 40 },
-  customTabContainer: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  customTabContainer: { flexDirection: 'row', gap: 12, marginBottom: 8 },
   tabButton: { flex: 1, padding: 16, height: 150, borderRadius: 16, borderWidth: 1, flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-start', elevation: 2 },
   iconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', elevation: 2 },
   guestButtonActive: { backgroundColor: '#3B82F6', borderColor: '#3B82F6' },
@@ -340,9 +328,33 @@ const styles = StyleSheet.create({
   tabStats: { fontSize: 12, fontWeight: "500", opacity: 0.9 },
   textActive: { color: '#FFFFFF' },
   textInactive: { color: '#1F2937' },
+  pillsWrapper: { marginBottom: 16, marginTop: 8 },
+  pillsContainer: { gap: 8, paddingRight: 16 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: 'white' },
+  pillText: { fontSize: 13, fontWeight: '600', color: '#4B5563' },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  pillActiveAll: { backgroundColor: '#111827', borderColor: '#111827' },
+  pillActivePending: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+  pillActiveAccepted: { backgroundColor: '#22C55E', borderColor: '#22C55E' },
+  pillActiveDeclined: { backgroundColor: '#EF4444', borderColor: '#EF4444' },
+  pillTextActive: { color: 'white' },
   emptyContainer: { alignItems: "center", justifyContent: "center", padding: 32, marginTop: 20 },
   emptyText: { fontSize: 16, fontWeight: "600", color: "#4B5563", textAlign: "center", marginTop: 16 },
   ctaButton: { backgroundColor: "#4F46E5", paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 },
   ctaButtonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  listContainer: {}
+  listContainer: {},
+  // 👇 ESTILOS DO X DISCRETO 👇
+  cardWrapper: { position: 'relative', marginBottom: 12 },
+  removeButton: { 
+    position: 'absolute', 
+    top: 4, 
+    right: 4, 
+    backgroundColor: 'white', 
+    borderRadius: 10, 
+    padding: 2,
+    zIndex: 10,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F3F4F6'
+  }
 });
