@@ -11,14 +11,16 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage"; 
 
 import { useAuth } from "../../context/AuthContext";
 import { getMatchesForGuest, getMatchesForHost, updateMatchStatus, getEventsByHost } from "../../services/api";
+import { supabase } from "../../services/supabase"; 
 import { toast } from "../../hooks/use-toast";
 import MatchCard from "../cards/MatchCard";
 import Icon from "../ui/Icon";
 import LoadingSpinner from "../ui/LoadingSpinner";
-import { formatShabbatDate, getNextShabbat } from "../../lib/utils";
+import { formatShabbatDate } from "../../lib/utils";
 
 import CalendarIcon from "../../assets/icons/CalendarIcon";
 import IconGuest from "../../assets/icons/IconGuest";
@@ -48,11 +50,9 @@ export default function HomeScreen({ navigation }) {
   const [hostMatches, setHostMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const [activeTab, setActiveTab] = useState(hasHostAccess ? 'host' : 'guest');
+  const [hiddenMatchIds, setHiddenMatchIds] = useState([]);
   const [filterPriority, setFilterPriority] = useState('all'); 
-
-  const todayDate = useMemo(() => new Date(), []);
 
   useEffect(() => {
     if (!hasHostAccess) {
@@ -69,61 +69,74 @@ export default function HomeScreen({ navigation }) {
     }
 
     try {
-      const promises = [getMatchesForGuest(user.id)];
-      if (hasHostAccess) {
-          promises.push(getMatchesForHost(user.id));
-          promises.push(getEventsByHost(user.id));
-      }
+      const stored = await AsyncStorage.getItem(`hidden_matches_${user.id}`);
+      const hiddenIds = stored ? JSON.parse(stored) : [];
+      setHiddenMatchIds(hiddenIds);
 
-      const results = await Promise.all(promises);
-      const guestResponse = results[0];
-      const hostMatchesRes = hasHostAccess ? results[1] : null;
-      const hostEventsRes = hasHostAccess ? results[2] : null;
+      // 👇 BUSCA DIRETA PARA GARANTIR retry_count E retry_message 👇
+      // Buscamos matches do convidado
+      const { data: guestMatchesRaw, error: guestError } = await supabase
+        .from('matches')
+        .select('*, event:events(*)')
+        .eq('guest_id', user.id);
+
+      // Buscamos dados do anfitrião (se aplicável)
+      let hostDisplayItems = [];
+      if (hasHostAccess) {
+        // Trazemos os eventos e os pedidos vinculados a eles
+        const { data: events } = await supabase
+          .from('events')
+          .select('*')
+          .eq('host_id', user.id);
+        
+        const { data: allHostMatches } = await supabase
+          .from('matches')
+          .select('*, guest:profiles(*)')
+          .in('event_id', (events || []).map(e => e.id));
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        hostDisplayItems = (events || [])
+          .filter(event => new Date(event.date) >= today)
+          .map(event => {
+            const eventMatches = (allHostMatches || []).filter(m => m.event_id === event.id);
+            const pendingCount = eventMatches.filter(m => m.status === 'pending').length;
+            const acceptedCount = eventMatches.filter(m => m.status === 'accepted').length;
+            const declinedCount = eventMatches.filter(m => m.status === 'declined').length;
+            
+            // Verifica se algum pedido nesse evento é uma reconsideração (para sinalizar no container)
+            const hasAppeal = eventMatches.some(m => m.retry_count >= 1);
+
+            return {
+                id: `event-group-${event.id}`,
+                event: event,
+                status: pendingCount > 0 ? "pending" : (acceptedCount > 0 ? "accepted" : "declined"), 
+                isEventContainer: true,
+                pendingCount,
+                acceptedCount,
+                declinedCount,
+                retry_count: hasAppeal ? 1 : 0, // Indica se há apelos para o anfitrião ver
+                totalMatches: eventMatches.length,
+                hostPhoto: user?.avatar_url,
+                ...(eventMatches[0] || { user: null }) 
+            };
+        });
+      }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const filteredGuestMatches = (guestResponse?.data || []).filter(match => {
+      const filteredGuestMatches = (guestMatchesRaw || []).filter(match => {
         if (!match.event || !match.event.date) return false;
         const isFuture = new Date(match.event.date) >= today;
-        const isNotCancelled = match.status !== 'cancelled'; 
-        return isFuture && isNotCancelled;
+        const isNotHidden = !hiddenIds.includes(match.id);
+        return isFuture && isNotHidden;
       });
+
       setUserMatches(filteredGuestMatches);
-      
-      if (hasHostAccess && hostEventsRes) {
-          const allEvents = hostEventsRes.data || [];
-          const allMatches = hostMatchesRes?.data || [];
+      setHostMatches(hostDisplayItems);
 
-          const myCreatedEvents = allEvents.filter(event => {
-            if (!event.host_id || !user.id) return false;
-            return String(event.host_id) === String(user.id) && new Date(event.date) >= today;
-          });
-
-          const hostDisplayItems = myCreatedEvents.map(event => {
-              const eventMatches = allMatches.filter(m => String(m.event_id) === String(event.id));
-              const pendingCount = eventMatches.filter(m => m.status === 'pending').length;
-              const acceptedCount = eventMatches.filter(m => m.status === 'accepted').length;
-              const declinedCount = eventMatches.filter(m => m.status === 'declined').length;
-              
-              return {
-                  id: `event-group-${event.id}`,
-                  event: event,
-                  status: pendingCount > 0 ? "pending" : (acceptedCount > 0 ? "accepted" : "declined"), 
-                  isEventContainer: true,
-                  pendingCount,
-                  acceptedCount,
-                  declinedCount,
-                  totalMatches: eventMatches.length,
-                  hostPhoto: user?.avatar_url,
-                  ...(eventMatches[0] || { user: null }) 
-              };
-          });
-
-          setHostMatches(hostDisplayItems);
-      } else {
-          setHostMatches([]);
-      }
     } catch (error) {
       console.error("Erro HomeScreen:", error);
     } finally {
@@ -133,10 +146,46 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { fetchMatches(); }, [fetchMatches]));
 
+  const handleRetryRequest = async (matchId, newMessage) => {
+    try {
+      const currentMatch = userMatches.find(m => m.id === matchId);
+      
+      if (currentMatch && Number(currentMatch.retry_count || 0) >= 1) {
+        Alert.alert("Aviso", "Você já enviou um re-pedido para este evento.");
+        return;
+      }
+
+      const newCount = Number(currentMatch?.retry_count || 0) + 1;
+
+      const { error } = await supabase
+        .from('matches')
+        .update({ 
+          status: 'pending', 
+          retry_message: newMessage,
+          retry_count: newCount,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', matchId);
+
+      if (error) throw error;
+
+      toast({ 
+        type: "success", 
+        title: "Re-pedido enviado!", 
+        description: "O anfitrião recebeu sua nova mensagem." 
+      });
+      
+      fetchMatches(); 
+    } catch (error) {
+      console.error("Erro ao reenviar:", error);
+      toast({ type: "error", title: "Erro ao enviar", description: "Tente novamente." });
+    }
+  };
+
   const handleRemoveDeclinedMatch = (matchId) => {
     Alert.alert(
-      "Remover Pedido",
-      "Deseja ocultar este pedido recusado da sua tela inicial?",
+      "Ocultar Pedido",
+      "Deseja remover este pedido recusado da sua tela inicial?",
       [
         { text: "Manter", style: "cancel" },
         { 
@@ -144,11 +193,12 @@ export default function HomeScreen({ navigation }) {
           style: "destructive", 
           onPress: async () => {
             try {
-              await updateMatchStatus(matchId, 'cancelled');
-              toast({ type: "success", title: "Pedido removido" });
+              const newHiddenList = [...hiddenMatchIds, matchId];
+              await AsyncStorage.setItem(`hidden_matches_${user.id}`, JSON.stringify(newHiddenList));
+              setHiddenMatchIds(newHiddenList);
               fetchMatches();
             } catch (error) {
-              toast({ type: "error", title: "Erro ao remover" });
+              toast({ type: "error", title: "Erro ao ocultar card" });
             }
           }
         }
@@ -193,21 +243,10 @@ export default function HomeScreen({ navigation }) {
   const renderFilterPills = () => (
     <View style={styles.pillsWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContainer}>
-            <TouchableOpacity style={[styles.pill, filterPriority === 'all' && styles.pillActiveAll]} onPress={() => setFilterPriority('all')}>
-                <Text style={[styles.pillText, filterPriority === 'all' && styles.pillTextActive]}>Todos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.pill, filterPriority === 'pending' && styles.pillActivePending]} onPress={() => setFilterPriority('pending')}>
-                <View style={[styles.statusDot, { backgroundColor: '#F59E0B' }]} />
-                <Text style={[styles.pillText, filterPriority === 'pending' && styles.pillTextActive]}>Pendentes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.pill, filterPriority === 'accepted' && styles.pillActiveAccepted]} onPress={() => setFilterPriority('accepted')}>
-                <View style={[styles.statusDot, { backgroundColor: '#22C55E' }]} />
-                <Text style={[styles.pillText, filterPriority === 'accepted' && styles.pillTextActive]}>Aceitos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.pill, filterPriority === 'declined' && styles.pillActiveDeclined]} onPress={() => setFilterPriority('declined')}>
-                <View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} />
-                <Text style={[styles.pillText, filterPriority === 'declined' && styles.pillTextActive]}>Recusados</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'all' && styles.pillActiveAll]} onPress={() => setFilterPriority('all')}><Text style={[styles.pillText, filterPriority === 'all' && styles.pillTextActive]}>Todos</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'pending' && styles.pillActivePending]} onPress={() => setFilterPriority('pending')}><View style={[styles.statusDot, { backgroundColor: '#F59E0B' }]} /><Text style={[styles.pillText, filterPriority === 'pending' && styles.pillTextActive]}>Pendentes</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'accepted' && styles.pillActiveAccepted]} onPress={() => setFilterPriority('accepted')}><View style={[styles.statusDot, { backgroundColor: '#22C55E' }]} /><Text style={[styles.pillText, filterPriority === 'accepted' && styles.pillTextActive]}>Aceitos</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.pill, filterPriority === 'declined' && styles.pillActiveDeclined]} onPress={() => setFilterPriority('declined')}><View style={[styles.statusDot, { backgroundColor: '#EF4444' }]} /><Text style={[styles.pillText, filterPriority === 'declined' && styles.pillTextActive]}>Recusados</Text></TouchableOpacity>
         </ScrollView>
     </View>
   );
@@ -224,9 +263,7 @@ export default function HomeScreen({ navigation }) {
             <LinearGradient colors={["#4F46E5", "#7C3AED"]} style={styles.shabbatCard}>
               <View>
                 <Text style={styles.shabbatTitle}>Próximo Evento</Text>
-                {nextEventDate && (
-                  <Text style={styles.nextEventDate}>{formatShabbatDate(nextEventDate)}</Text>
-                )}
+                {nextEventDate && <Text style={styles.nextEventDate}>{formatShabbatDate(nextEventDate)}</Text>}
               </View>
               <CalendarIcon size={32} color="rgba(255,255,255,0.5)" />
             </LinearGradient>
@@ -268,7 +305,7 @@ export default function HomeScreen({ navigation }) {
 
               <View style={styles.listContainer}>
                 {(activeTab === "guest" ? sortedUserMatches : sortedHostMatches).map((item) => (
-                  <View key={item.id} style={styles.cardWrapper}> 
+                  <View key={item.id} style={styles.cardWrapper}>
                     <TouchableOpacity
                       onPress={() => navigation.navigate("EventDetail", { 
                         eventId: item.event.id, 
@@ -277,16 +314,16 @@ export default function HomeScreen({ navigation }) {
                       })}
                       style={{ flex: 1 }}
                     >
-                      <MatchCard match={item} isHost={activeTab === 'host'} />
+                      <MatchCard 
+                        match={item} 
+                        isHost={activeTab === 'host'} 
+                        onRetry={handleRetryRequest} 
+                      />
                     </TouchableOpacity>
 
-                    {/* 👇 "X" DISCRETO NO TOPO 👇 */}
                     {activeTab === 'guest' && item.status === 'declined' && (
-                      <TouchableOpacity 
-                        style={styles.removeButton} 
-                        onPress={() => handleRemoveDeclinedMatch(item.id)}
-                      >
-                        <Icon name="close" size={20} color="#9CA3AF" />
+                      <TouchableOpacity style={styles.removeButton} onPress={() => handleRemoveDeclinedMatch(item.id)}>
+                        <Icon name="close" size={16} color="#9CA3AF" />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -342,19 +379,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, fontWeight: "600", color: "#4B5563", textAlign: "center", marginTop: 16 },
   ctaButton: { backgroundColor: "#4F46E5", paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 },
   ctaButtonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  listContainer: {},
-  // 👇 ESTILOS DO X DISCRETO 👇
   cardWrapper: { position: 'relative', marginBottom: 12 },
-  removeButton: { 
-    position: 'absolute', 
-    top: 4, 
-    right: 4, 
-    backgroundColor: 'white', 
-    borderRadius: 10, 
-    padding: 2,
-    zIndex: 10,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F3F4F6'
-  }
+  removeButton: { position: 'absolute', top: 10, right: 10, backgroundColor: '#F3F4F6', borderRadius: 15, width: 28, height: 28, justifyContent: 'center', alignItems: 'center', zIndex: 99, elevation: 4 }
 });

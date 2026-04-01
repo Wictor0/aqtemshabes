@@ -246,7 +246,6 @@ export default function ProfileScreen({ navigation }) {
   
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   
-  const [newUsername, setNewUsername] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPhone, setNewPhone] = useState(''); 
@@ -275,7 +274,6 @@ export default function ProfileScreen({ navigation }) {
       setProfile(combinedProfile);
       setDependents(dependentsData || []);
       
-      setNewUsername(combinedProfile.username || '');
       setNewEmail(combinedProfile.email || '');
       setNewPhone(combinedProfile.phone || ''); 
       setNewDietary(combinedProfile.dietary_restrictions || '');
@@ -302,7 +300,8 @@ export default function ProfileScreen({ navigation }) {
     setIsSaving(true);
     try {
       const profileUpdateData = {};
-      if (newUsername.trim() && newUsername !== profile.username) profileUpdateData.username = newUsername;
+      
+      // 👇 username removido da lógica de atualização
       if (newPhone.trim() && newPhone !== profile.phone) profileUpdateData.phone = newPhone;
       
       if (newDietary !== (profile.dietary_restrictions || '')) {
@@ -432,8 +431,8 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView 
         contentContainerStyle={styles.container}
-        keyboardDismissMode="on-drag" // 👈 FECHA TECLADO AO ROLAR
-        keyboardShouldPersistTaps="handled" // 👈 PERMITE CLICAR EM BOTÕES COM TECLADO ABERTO
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.profileHeader}>
           <TouchableOpacity onPress={handlePickAvatar} disabled={isUploading}>
@@ -448,7 +447,6 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.validatorBadge}>
              <Text style={styles.validatorText}>Validação: <Text style={{fontWeight: 'bold'}}>{profile.validator_organization || 'Pendente'}</Text></Text>
           </View>
-        
         </View>
 
         <View style={styles.section}>
@@ -459,15 +457,18 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.infoBox}>
                 <View style={styles.infoRow}>
                     <Icon name="user" size={20} color="#6B7280" style={styles.infoIcon} />
-                    {isEditingAccount ? <TextInput style={styles.infoInput} value={newUsername} onChangeText={setNewUsername} /> : <Text style={styles.infoText}>{profile.full_name || 'Não definido'}</Text>}
+                    {/* 👇 Username agora é exibido como texto fixo, proibindo alteração 👇 */}
+                    <Text style={[styles.infoText, isEditingAccount && { color: '#9CA3AF' }]}>
+                        {profile.full_name}
+                    </Text>
                 </View>
                 <View style={styles.infoRow}>
                     <Icon name="mail" size={20} color="#6B7280" style={styles.infoIcon} />
-                    {isEditingAccount ? <TextInput style={styles.infoInput} value={newEmail} onChangeText={setNewEmail} /> : <Text style={styles.infoText}>{profile.email}</Text>}
+                    {isEditingAccount ? <TextInput style={styles.infoInput} value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" /> : <Text style={styles.infoText}>{profile.email}</Text>}
                 </View>
                 <View style={styles.infoRow}>
                     <Icon name="phone" size={20} color="#6B7280" style={styles.infoIcon} />
-                    {isEditingAccount ? <TextInput style={styles.infoInput} value={newPhone} onChangeText={setNewPhone} /> : <Text style={styles.infoText}>{profile.phone || 'Não definido'}</Text>}
+                    {isEditingAccount ? <TextInput style={styles.infoInput} value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" /> : <Text style={styles.infoText}>{profile.phone || 'Não definido'}</Text>}
                 </View>
                 
                 <View style={styles.infoRow}>
@@ -574,6 +575,7 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
+// ... estilos mantidos iguais
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F9FAFB' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -584,7 +586,6 @@ const styles = StyleSheet.create({
   cameraIconContainer: { position: 'absolute', bottom: 20, right: 5, backgroundColor: '#4F46E5', borderRadius: 15, padding: 6, borderWidth: 2, borderColor: '#FFFFFF' },
   nameContainer: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center' },
   fullName: { fontSize: 24, fontWeight: 'bold', color: '#1F2937', textAlign: 'center' },
-  ageGroupText: { fontSize: 16, color: '#6B7280', marginTop: 4, fontStyle: 'italic' },
   section: { marginBottom: 32 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 16 },

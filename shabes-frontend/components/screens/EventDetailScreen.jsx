@@ -11,7 +11,11 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
-  Linking
+  Linking,
+  Modal,
+  TextInput,
+  Keyboard,
+  TouchableWithoutFeedback
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Checkbox from 'expo-checkbox';
@@ -43,6 +47,7 @@ import {
   deleteEvent,
   saveInternalNotification 
 } from "../../services/api"; 
+import { supabase } from "../../services/supabase"; 
 import { toast } from "../../hooks/use-toast";
 import { formatShabbatDate } from "../../lib/utils";
 import { showLocalNotification, sendPushNotification } from "../../services/notificationService";
@@ -138,6 +143,11 @@ export default function EventDetailScreen({ route, navigation }) {
   const [eventRequests, setEventRequests] = useState([]);
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
+  // 👇 NOVOS ESTADOS ADICIONADOS 👇
+  const [isRetryModalVisible, setIsRetryModalVisible] = useState(false);
+  const [retryMessage, setRetryMessage] = useState("");
+  const [isSendingRetry, setIsSendingRetry] = useState(false);
+
   const eventDateStr = event?.date ? event.date.split('T')[0] : "";
   const isPessachEvent = PESSACH_DAYS.includes(eventDateStr);
   const eventCategoryLabel = isPessachEvent ? "Pessach" : "Shabat";
@@ -171,25 +181,32 @@ export default function EventDetailScreen({ route, navigation }) {
 
       const isUserHost = user?.id === eventData.host_id;
 
-      if (!isUserHost) {
-        const { data: guestMatches } = await getMatchesForGuest(user.id);
-        const existingMatch = (guestMatches || []).find(m => String(m.event_id) === String(currentEventId));
+      // 👇 BUSCA DIRETA DA TABELA 'MATCHES' PARA GARANTIR retry_message 👇
+      if (isUserHost) {
+        const { data: hostMatches } = await supabase
+          .from('matches')
+          .select('*, guest:profiles(*)')
+          .eq('event_id', currentEventId);
+        setEventRequests(hostMatches || []);
+      } else {
+        const { data: guestMatches } = await supabase
+          .from('matches')
+          .select('*')
+          .eq('event_id', currentEventId)
+          .eq('guest_id', user.id);
         
+        const existingMatch = guestMatches?.[0];
         if (existingMatch) {
           setMatchDetails(existingMatch);
-          if (existingMatch.guest?.dependents && existingMatch.dependent_ids) {
-            const attending = existingMatch.guest.dependents.filter(dep => 
+          // Busca dependentes se houver
+          const { data: userDeps } = await getDependents();
+          if (userDeps && existingMatch.dependent_ids) {
+            const attending = userDeps.filter(dep => 
               existingMatch.dependent_ids.includes(dep.id)
             );
             setAttendingDependents(attending);
           }
         }
-      }
-
-      if (isUserHost) {
-        const { data: hostMatches } = await getMatchesForHost(user.id);
-        const filtered = (hostMatches || []).filter(m => String(m.event_id) === String(currentEventId));
-        setEventRequests(filtered);
       }
 
     } catch (error) {
@@ -204,6 +221,43 @@ export default function EventDetailScreen({ route, navigation }) {
     fetchEventData();
   }, [fetchEventData]);
 
+  // 👇 FUNÇÃO PARA ENVIAR O RE-PEDIDO 👇
+  const handleSendRetry = async () => {
+    if (!retryMessage.trim()) return;
+    setIsSendingRetry(true);
+    try {
+      const { error } = await supabase
+        .from('matches')
+        .update({ 
+          status: 'pending', 
+          retry_message: retryMessage,
+          retry_count: 1,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', matchDetails.id);
+
+      if (error) throw error;
+
+      await saveInternalNotification(
+        event.host_id, 
+        `Pedido de Insistência! 📣`, 
+        `${user?.username} enviou uma nova mensagem para seu evento.`,
+        "match_request",
+        matchDetails.id
+      );
+
+      toast({ type: "success", title: "Novo pedido enviado!", description: "O anfitrião recebeu seu apelo." });
+      setIsRetryModalVisible(false);
+      setRetryMessage("");
+      fetchEventData();
+    } catch (error) {
+      console.error(error);
+      toast({ type: "error", title: "Erro ao reenviar pedido" });
+    } finally {
+      setIsSendingRetry(false);
+    }
+  };
+
 const handleDeleteEvent = async () => {
     Alert.alert(
       "Confirmar Cancelamento",
@@ -216,67 +270,29 @@ const handleDeleteEvent = async () => {
           onPress: async () => {
             setActionLoading(true);
             try {
-              console.log("🔍 Buscando convidados para o evento:", event.id);
-
-              // 1. Buscamos TODOS os matches que o host recebeu
               const { data: allMatches } = await getMatchesForHost(user.id);
-
-              // 2. Filtramos apenas os que pertencem a ESTE evento e não foram recusados
               const guestsToNotify = (allMatches || []).filter(m => 
                 String(m.event_id) === String(event.id) && 
                 (m.status === 'accepted' || m.status === 'pending')
               );
 
-              console.log(`✉️ Notificando ${guestsToNotify.length} pessoas...`);
-
               if (guestsToNotify.length > 0) {
                 const notiTitle = "Evento Cancelado ❌";
                 const notiMsg = `O ${eventCategoryLabel} "${event.title}" foi cancelado pelo anfitrião.`;
-
-                // 3. Criamos o loop de notificações
                 const notificationPromises = guestsToNotify.map(async (match) => {
-                  // Notificação Interna (Histórico no Header)
-                  // Usamos match.guest_id para garantir que vai para o convidado
-                  await saveInternalNotification(
-                    match.guest_id, 
-                    notiTitle, 
-                    notiMsg, 
-                    "event_cancelled", 
-                    event.id 
-                  );
-
-                  // Notificação Push (Alerta no Celular)
-                  // IMPORTANTE: Verifique se o seu backend Render retorna o campo push_token dentro do objeto guest
+                  await saveInternalNotification(match.guest_id, notiTitle, notiMsg, "event_cancelled", event.id);
                   if (match.guest?.push_token) {
-                    console.log(`🚀 Enviando Push para: ${match.guest_id}`);
-                    return sendPushNotification(
-                      match.guest.push_token, 
-                      notiTitle, 
-                      notiMsg, 
-                      { eventId: event.id, type: 'event_cancelled' }
-                    );
-                  } else {
-                    console.warn(`⚠️ Convidado ${match.guest_id} sem token de push.`);
+                    return sendPushNotification(match.guest.push_token, notiTitle, notiMsg, { eventId: event.id, type: 'event_cancelled' });
                   }
                 });
-
-                // Aguardamos todos os disparos terminarem
                 await Promise.all(notificationPromises);
               }
-
-              // 4. SÓ AGORA deletamos o evento do banco de dados
               await deleteEvent(event.id);
-              
-              toast({ 
-                type: "success", 
-                title: "Evento cancelado", 
-                description: "O evento foi removido e os interessados avisados." 
-              });
-              
+              toast({ type: "success", title: "Evento cancelado" });
               navigation.navigate('Main'); 
             } catch (error) {
-              console.error("❌ Erro ao cancelar evento:", error);
-              toast({ type: "error", title: "Erro ao processar cancelamento" });
+              console.error(error);
+              toast({ type: "error", title: "Erro ao cancelar" });
             } finally {
               setActionLoading(false);
             }
@@ -417,7 +433,6 @@ const handleDeleteEvent = async () => {
     }
   };
 
-  // 👇 FUNÇÃO DE PONTE PARA ADICIONAR O ALERTA DE SEGURANÇA 👇
   const handleMatchAction = (targetMatchId, status) => {
     if (status === 'declined') {
       Alert.alert(
@@ -481,11 +496,16 @@ const handleDeleteEvent = async () => {
   const showInterestButton = !isUserHost && origin !== "home" && origin !== "agenda" && !matchDetails; 
   const showMatchDetails = (matchDetails || (origin === "home" || origin === "agenda")) && matchDetails && !isUserHost; 
   const isMatchAccepted = showMatchDetails && matchDetails.status === 'accepted';
+  const isMatchDeclined = showMatchDetails && matchDetails.status === 'declined';
   const showWhatsAppButton = !isUserHost && isMatchAccepted; 
   const addressToShow = (isMatchAccepted || isUserHost) ? event.full_address : event.approximate_address;
   const showHostIdentity = isUserHost || isMatchAccepted;
   const hostDisplayName = showHostIdentity ? (event.host?.username || event.host?.full_name || "Anfitrião") : "Anfitrião da Comunidade";
   const isDeadlinePassed = event.deadline_datetime && new Date() > new Date(event.deadline_datetime);
+
+  // 👇 LÓGICA DE RE-PEDIDO 👇
+  const hasAlreadyRetried = matchDetails?.retry_count >= 1;
+  const canRetry = isMatchDeclined && !hasAlreadyRetried;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -538,6 +558,7 @@ const handleDeleteEvent = async () => {
               </CardContent>
             </Card>
 
+            {/* 👇 VISÃO DO ANFITRIÃO: PEDIDOS COM SUPORTE A RE-PEDIDO 👇 */}
             {isUserHost && (
               <View style={{ width: '100%', marginTop: 8 }}>
                 <Text style={styles.sectionTitle}>Pedidos de Participação ({eventRequests.length})</Text>
@@ -547,14 +568,40 @@ const handleDeleteEvent = async () => {
                       <View style={styles.requestHeader}>
                         <TouchableOpacity style={styles.guestProfileInfo} onPress={() => navigation.navigate('PublicProfile', { userId: request.guest?.id })}>
                           <Image source={{ uri: request.guest?.avatar_url || `https://ui-avatars.com/api/?name=${request.guest?.username}` }} style={styles.avatarMini} />
-                          <View><View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={styles.guestNameText}>{request.guest?.username}</Text><VerifiedBadge role={request.guest?.role} size={14} style={{ marginLeft: 4 }} /></View><Text style={styles.timestampSmall}>Enviado em {new Date(request.created_at).toLocaleDateString('pt-BR')}</Text></View>
+                          <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Text style={styles.guestNameText}>{request.guest?.username}</Text>
+                              <VerifiedBadge role={request.guest?.role} size={14} style={{ marginLeft: 4 }} />
+                            </View>
+                            <Text style={styles.timestampSmall}>Enviado em {new Date(request.created_at).toLocaleDateString('pt-BR')}</Text>
+                          </View>
                         </TouchableOpacity>
-                        <Badge variant={request.status === 'accepted' ? "success" : request.status === 'declined' ? "destructive" : "warning"}>{request.status === 'accepted' ? "Aceito" : request.status === 'declined' ? "Recusado" : "Pendente"}</Badge>
+
+                        {/* Indicador de Reconsideração */}
+                        {request.retry_count >= 1 && (
+                          <Badge style={{ backgroundColor: "#7C3AED", marginRight: 8 }}>
+                             <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>INSISTÊNCIA</Text>
+                          </Badge>
+                        )}
+                        
+                        <Badge variant={request.status === 'accepted' ? "success" : request.status === 'declined' ? "destructive" : "warning"}>
+                          {request.status === 'accepted' ? "Aceito" : request.status === 'declined' ? "Recusado" : "Pendente"}
+                        </Badge>
                       </View>
+
                       <View style={styles.requestContent}>
-                        <Text style={styles.messageLabelMini}>Mensagem:</Text>
+                        <Text style={styles.messageLabelMini}>Mensagem Original:</Text>
                         <Text style={styles.messageTextMini}>{request.personal_message || 'Sem mensagem.'}</Text>
+                        
+                        {/* Exibição da Mensagem de Insistência */}
+                        {request.retry_message && (
+                          <View style={styles.retryMessageHostBox}>
+                             <Text style={styles.retryLabelMini}>MENSAGEM DE INSISTÊNCIA:</Text>
+                             <Text style={styles.retryTextMini}>{request.retry_message}</Text>
+                          </View>
+                        )}
                       </View>
+
                       {request.status === 'pending' && (
                         <View style={styles.requestActionsRow}>
                           <Button variant="destructive" style={{ flex: 1 }} onPress={() => handleMatchAction(request.id, "declined")} disabled={actionLoadingId === request.id}>Recusar</Button>
@@ -568,16 +615,47 @@ const handleDeleteEvent = async () => {
               </View>
             )}
 
+            {/* VISÃO DO CONVIDADO: DETALHES DO PEDIDO E RETRY */}
             {showMatchDetails && (
               <Card style={[{ width: "100%" }, isPessachEvent && { borderColor: GOLD_COLOR }]}>
                 <CardHeader>
                     <CardTitle>Seu Pedido</CardTitle>
-                    <Badge variant={matchDetails.status === 'accepted' ? "success" : matchDetails.status === 'declined' ? "destructive" : "warning"}>{matchDetails.status === 'accepted' ? "Aceito" : matchDetails.status === 'declined' ? "Recusado" : "Pendente"}</Badge>
+                    <Badge variant={matchDetails.status === 'accepted' ? "success" : matchDetails.status === 'declined' ? "destructive" : "warning"}>
+                      {matchDetails.status === 'accepted' ? "Aceito" : matchDetails.status === 'declined' ? "Recusado" : "Pendente"}
+                    </Badge>
                 </CardHeader>
                 <CardContent>
-                    <Text style={styles.sectionTitle}>Sua Mensagem</Text>
+                    <Text style={styles.sectionTitle}>Mensagem Original</Text>
                     <Text style={styles.messageText}>"{matchDetails.personal_message || 'Nenhuma mensagem.'}"</Text>
+                    
+                    {/* Exibição da Mensagem de Insistência enviada */}
+                    {matchDetails.retry_message && (
+                       <View style={styles.retryDisplayBox}>
+                          <Text style={styles.retryLabelSmall}>Mensagem de Insistência:</Text>
+                          <Text style={styles.retryTextSmall}>{matchDetails.retry_message}</Text>
+                       </View>
+                    )}
+
                     {attendingDependents.map((item) => <DependentDisplay key={item.id} dependent={item} />)}
+                    
+                    {/* Botão para Nova Tentativa */}
+                    {canRetry && (
+                      <Button 
+                        style={{ marginTop: 20, backgroundColor: "#4F46E5" }} 
+                        onPress={() => setIsRetryModalVisible(true)}
+                      >
+                        Tentar participar novamente
+                      </Button>
+                    )}
+
+                    {/* Aviso de Limite Atingido */}
+                    {isMatchDeclined && hasAlreadyRetried && (
+                      <View style={styles.limitBox}>
+                         <Icon name="information-outline" size={14} color="#EF4444" />
+                         <Text style={styles.limitText}>O limite de tentativas para este evento foi atingido.</Text>
+                      </View>
+                    )}
+
                     {showWhatsAppButton && (
                         <TouchableOpacity style={[styles.whatsappButton, isPessachEvent && { backgroundColor: GOLD_COLOR }]} onPress={() => handleOpenWhatsApp()}><Icon name="whatsapp" size={20} color="#FFFFFF" style={{ marginRight: 10 }} /><Text style={styles.whatsappButtonText}>Conversar com Anfitrião</Text></TouchableOpacity>
                     )}
@@ -616,6 +694,34 @@ const handleDeleteEvent = async () => {
             )}
           </View>
         </ScrollView>
+
+        {/* MODAL DE RE-PEDIDO */}
+        <Modal visible={isRetryModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={styles.modalSheet}>
+                <Text style={styles.modalTitle}>Novo Pedido</Text>
+                <Text style={styles.modalSub}>Escreva uma nova mensagem para o anfitrião reconsiderar seu pedido. Esta é sua última tentativa.</Text>
+                <Textarea 
+                  placeholder="Escreva aqui..." 
+                  value={retryMessage} 
+                  onChangeText={setRetryMessage}
+                />
+                <View style={styles.modalActions}>
+                  <Button variant="outline" style={{ flex: 1 }} onPress={() => setIsRetryModalVisible(false)}>Cancelar</Button>
+                  <Button 
+                    style={{ flex: 2, backgroundColor: "#4F46E5" }} 
+                    onPress={handleSendRetry} 
+                    disabled={!retryMessage.trim() || isSendingRetry}
+                  >
+                    {isSendingRetry ? <ActivityIndicator color="#FFF" /> : "Enviar Novo Pedido"}
+                  </Button>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </Modal>
+
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -658,9 +764,24 @@ const styles = StyleSheet.create({
   guestNameText: { fontSize: 15, fontWeight: 'bold' },
   timestampSmall: { fontSize: 11, color: '#9CA3AF' },
   requestContent: { backgroundColor: '#F9FAFB', padding: 12, borderRadius: 8, marginBottom: 12 },
-  messageLabelMini: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  messageTextMini: { fontSize: 14, fontStyle: 'italic' },
+  messageLabelMini: { fontSize: 11, fontWeight: '700', color: '#6B7280', textTransform: 'uppercase' },
+  messageTextMini: { fontSize: 14, fontStyle: 'italic', color: '#374151', marginBottom: 8 },
   requestActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   whatsappActionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, backgroundColor: '#ECFDF5', borderRadius: 8 },
-  whatsappActionText: { color: '#059669', fontWeight: 'bold' }
-});               
+  whatsappActionText: { color: '#059669', fontWeight: 'bold' },
+  
+  // NOVOS ESTILOS PARA INSISTÊNCIA
+  retryMessageHostBox: { marginTop: 10, padding: 10, backgroundColor: '#EEF2FF', borderRadius: 6, borderWidth: 1, borderColor: '#C7D2FE' },
+  retryLabelMini: { fontSize: 10, fontWeight: '900', color: '#4F46E5', marginBottom: 2 },
+  retryTextMini: { fontSize: 14, fontWeight: '600', color: '#1E1B4B' },
+  retryDisplayBox: { marginTop: 12, padding: 12, backgroundColor: '#F0F9FF', borderRadius: 8, borderLeftWidth: 4, borderLeftColor: '#0EA5E9' },
+  retryLabelSmall: { fontSize: 11, fontWeight: 'bold', color: '#0369A1', marginBottom: 4 },
+  retryTextSmall: { fontSize: 13, color: '#075985', fontStyle: 'italic' },
+  limitBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 10, backgroundColor: '#FEF2F2', borderRadius: 8, borderWidth: 1, borderColor: '#FECACA' },
+  limitText: { color: '#B91C1C', fontSize: 12, fontWeight: '500' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalSheet: { backgroundColor: 'white', borderRadius: 20, padding: 20 },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
+  modalSub: { fontSize: 14, color: '#6B7280', marginBottom: 16, lineHeight: 20 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 }
+});

@@ -69,7 +69,6 @@ export default function Header() {
           filter: `user_id=eq.${user.id}` 
         },
         (payload) => {
-          // Adiciona a nova notificação no topo da lista
           setNotifications(prev => [payload.new, ...prev]);
         }
       )
@@ -88,7 +87,6 @@ export default function Header() {
     if (unreadCount > 0) {
       try {
         await markAllNotificationsAsRead(user.id);
-        // Atualiza o estado local para refletir que foram lidas (remove o badge e fundo destaque)
         setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       } catch (error) {
         console.error("Erro ao marcar notificações como lidas:", error);
@@ -96,17 +94,44 @@ export default function Header() {
     }
   };
 
+  // 👇 FUNÇÃO PARA LIMPAR NOTIFICAÇÕES 👇
+  const handleClearNotifications = async () => {
+    Alert.alert(
+      "Limpar Notificações",
+      "Deseja apagar todas as suas notificações permanentemente?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Limpar Tudo", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', user.id);
+              
+              if (error) throw error;
+              setNotifications([]);
+            } catch (error) {
+              console.error("Erro ao limpar notificações:", error);
+              Alert.alert("Erro", "Não foi possível limpar as notificações.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleNotificationPress = (item) => {
     setIsNotiModalVisible(false);
 
-    // 1. Prioridade para match_id (Pedidos de participação)
     if (item.match_id) {
         navigation.navigate('EventDetail', { 
             matchId: item.match_id,
             origin: 'header_notification' 
         });
     } 
-    // 2. Fallback para event_id (Criação ou Cancelamento de evento)
     else if (item.event_id) {
         navigation.navigate('EventDetail', { 
             eventId: item.event_id,
@@ -119,7 +144,6 @@ export default function Header() {
   };
 
   const renderNotificationItem = ({ item }) => {
-    // Lógica de ícones baseada no tipo
     let iconName = "bell-outline";
     let iconColor = "#4F46E5";
 
@@ -128,7 +152,7 @@ export default function Header() {
     else if (item.type === 'event_created') iconName = "calendar-check-outline";
     else if (item.type === 'event_cancelled') {
         iconName = "calendar-remove-outline";
-        iconColor = "#EF4444"; // Vermelho para cancelamento
+        iconColor = "#EF4444";
     }
 
     return (
@@ -198,9 +222,19 @@ export default function Header() {
           <View style={styles.notiModalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.notiModalHeader}>
               <Text style={styles.notiModalTitle}>Atividades Recentes</Text>
-              <TouchableOpacity onPress={() => setIsNotiModalVisible(false)}>
-                <Icon name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
+              
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                {/* 👇 BOTÃO DE LIMPAR 👇 */}
+                {notifications.length > 0 && (
+                  <TouchableOpacity onPress={handleClearNotifications}>
+                    <Icon name="trash-can-outline" size={22} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
+                
+                <TouchableOpacity onPress={() => setIsNotiModalVisible(false)}>
+                  <Icon name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <FlatList
@@ -249,7 +283,7 @@ const styles = StyleSheet.create({
   notiModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 12 },
   notiModalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   notiItem: { flexDirection: 'row', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12, paddingHorizontal: 8 },
-  notiUnread: { backgroundColor: '#F5F3FF', borderRadius: 12 }, // Fundo roxo suave para não lidas
+  notiUnread: { backgroundColor: '#F5F3FF', borderRadius: 12 },
   notiIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEF2FF', justifyContent: 'center', alignItems: 'center' },
   notiTitle: { fontSize: 14, fontWeight: '700', color: '#1F2937' },
   notiMessage: { fontSize: 13, color: '#4B5563', marginTop: 2, lineHeight: 18 },

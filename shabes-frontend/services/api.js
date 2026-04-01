@@ -69,6 +69,7 @@ api.interceptors.request.use(
 // --- FUNÇÕES DE API ---
 // ==========================================
 
+// --- Autenticação ---
 export const login = (email, password) => api.post('/auth/login', { email, password });
 export const resendVerificationEmail = (email) => api.post('/auth/resend-verification', { email });
 
@@ -114,14 +115,12 @@ export const createEvent = (eventData) => api.post('/events', eventData);
 export const deleteEvent = (eventId) => api.delete(`/events/${eventId}`);
 export const getEventsByHost = (hostId) => api.get(`/events?host_id=${hostId}`, noCacheConfig);
 
-// --- Matches ---
+// --- Matches (Pedidos de Participação) ---
 export const createMatch = (matchData) => api.post('/matches', matchData);
 export const getMatchById = (matchId) => api.get(`/matches?id=${matchId}`, noCacheConfig);
 export const updateMatchStatus = (matchId, status) => api.patch(`/matches/${matchId}`, { status });
+export const deleteMatch = (matchId) => api.delete(`/matches/${matchId}`); // 👈 Integrado aqui
 
-/**
- * 👇 IMPORTANTE: Certifique-se que o Backend Render inclui o push_token do convidado nesta rota 👇
- */
 export const getAcceptedGuestsByEvent = (eventId) => 
   api.get(`/matches?event_id=${eventId}&status=accepted`, noCacheConfig);
 
@@ -138,7 +137,7 @@ export const createDependent = (dependentData) => api.post('/dependents', depend
 export const updateDependent = (dependentId, dependentData) => api.patch(`/dependents/${dependentId}`, dependentData);
 export const deleteDependent = (dependentId) => api.delete(`/dependents/${dependentId}`);
 
-// --- Notificações ---
+// --- Notificações (Via Supabase) ---
 export const getNotifications = async (userId) => {
   return supabase
     .from('notifications')
@@ -157,7 +156,6 @@ export const markAllNotificationsAsRead = async (userId) => {
 
 /**
  * Salva uma notificação no histórico do banco de dados.
- * Suporta o mapeamento dinâmico para as colunas UUID do seu banco.
  */
 export const saveInternalNotification = async (userId, title, message, type, relatedId = null) => {
   try {
@@ -171,7 +169,6 @@ export const saveInternalNotification = async (userId, title, message, type, rel
     };
 
     if (relatedId) {
-      // Diferencia entre IDs de pedidos e IDs de eventos gerais
       if (type.includes('match')) {
         payload.match_id = relatedId;
       } else {
@@ -182,7 +179,7 @@ export const saveInternalNotification = async (userId, title, message, type, rel
     const { data, error } = await supabase
       .from('notifications')
       .insert([payload])
-      .select(); // Adicionado select para debug se necessário
+      .select();
 
     if (error) throw error;
     return data;
